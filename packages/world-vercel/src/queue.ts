@@ -178,21 +178,20 @@ function getHeadersFromPayload(
 /**
  * Resolves the physical VQS topic for a message.
  *
- * Normally this is just the logical queue name. When `ENFORCE_STRICT_CONCURRENCY`
- * is enabled, flow (workflow) messages get a per-run topic by appending the
- * run id. VQS scopes `maxConcurrency` per concrete topic, so a per-run topic
- * combined with `maxConcurrency: 1` on the flow trigger enforces at most one
- * orchestrator invocation per run at a time. Step topics and health checks
- * (which carry no `runId`) keep their shared topic.
+ * Normally this is just the logical queue name. When
+ * `WORKFLOW_ENFORCE_STRICT_CONCURRENCY` is enabled, flow (workflow) messages
+ * get a per-run topic by appending the run id. VQS scopes `maxConcurrency`
+ * per concrete topic, so a per-run topic combined with `maxConcurrency: 1`
+ * on the flow trigger enforces at most one orchestrator invocation per run
+ * at a time. Step topics and health checks (which carry no `runId`) keep
+ * their shared topic.
  */
 function getPhysicalQueueName(
   queueName: ValidQueueName,
   payload: QueuePayload
 ): string {
-  // TEMP(ci-default-on): ignore ENFORCE_STRICT_CONCURRENCY so CI exercises the
-  // per-run topic across all e2e jobs. REVERT BEFORE MERGE — restore the
-  // `process.env.ENFORCE_STRICT_CONCURRENCY === '1' &&` condition below.
   if (
+    process.env.WORKFLOW_ENFORCE_STRICT_CONCURRENCY === '1' &&
     queueName.startsWith('__wkf_workflow_') &&
     'runId' in payload &&
     typeof payload.runId === 'string'
