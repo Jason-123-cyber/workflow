@@ -9,6 +9,8 @@ export interface DevTestConfig {
   apiFilePath: string;
   apiFileImportPath: string;
   canary?: boolean;
+  /** Whether the app emits deferred step copy files during dev. */
+  supportsDeferredStepCopies?: boolean;
   /** The workflow file to modify for testing HMR. Defaults to '3_streams.ts' */
   testWorkflowFile?: string;
   /** The workflows directory relative to appPath. Defaults to 'workflows' */
@@ -35,6 +37,17 @@ export function createDevTests(config?: DevTestConfig) {
     );
   }
   describe('dev e2e', () => {
+    // Each prewarm/trigger fetch is hard-bounded by this so cleanup never hangs
+    // on a wedged dev server.
+    const PREWARM_FETCH_TIMEOUT_MS = 5_000;
+    // The afterEach cleanup can issue two *sequential* prewarms (before and
+    // after deleting an added file) while the dev server is mid-rebuild — the
+    // teardown of a test that added a workflow file and edited an import is
+    // exactly when both rebuild and respond slowly. Its budget must therefore
+    // exceed 2× PREWARM_FETCH_TIMEOUT_MS (plus file IO) with headroom, or it
+    // trips vitest's 10s default hook timeout. The bounded fetches mean this
+    // can't hang indefinitely, so a generous budget is safe.
+    const CLEANUP_HOOK_TIMEOUT_MS = PREWARM_FETCH_TIMEOUT_MS * 4;
     const appPath = getWorkbenchAppPath();
     const deploymentUrl = process.env.DEPLOYMENT_URL;
     const generatedStep = path.join(appPath, finalConfig.generatedStepPath);
@@ -44,9 +57,11 @@ export function createDevTests(config?: DevTestConfig) {
     );
     const testWorkflowFile = finalConfig.testWorkflowFile ?? '3_streams.ts';
     const workflowsDir = finalConfig.workflowsDir ?? 'workflows';
-    const supportsDeferredStepCopies = generatedStep.includes(
-      path.join('.well-known', 'workflow', 'v1', 'step', 'route.js')
-    );
+    const supportsDeferredStepCopies =
+      finalConfig.supportsDeferredStepCopies ??
+      generatedStep.includes(
+        path.join('.well-known', 'workflow', 'v1', 'step', 'route.js')
+      );
     const restoreFiles: Array<{ path: string; content: string }> = [];
 
     const fetchWithTimeout = (pathname: string) => {
@@ -55,7 +70,7 @@ export function createDevTests(config?: DevTestConfig) {
       }
 
       return fetch(new URL(pathname, deploymentUrl), {
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(PREWARM_FETCH_TIMEOUT_MS),
       });
     };
 
@@ -78,7 +93,7 @@ export function createDevTests(config?: DevTestConfig) {
             workflowName,
             args,
           }),
-          signal: AbortSignal.timeout(5_000),
+          signal: AbortSignal.timeout(PREWARM_FETCH_TIMEOUT_MS),
         }
       );
 
@@ -140,7 +155,7 @@ export function createDevTests(config?: DevTestConfig) {
 
     beforeAll(async () => {
       await prewarm();
-    });
+    }, CLEANUP_HOOK_TIMEOUT_MS);
 
     afterEach(async () => {
       // Restore file contents before clearing any added files. Dev servers can
@@ -161,7 +176,7 @@ export function createDevTests(config?: DevTestConfig) {
         }
       }
       restoreFiles.length = 0;
-    });
+    }, CLEANUP_HOOK_TIMEOUT_MS);
 
     test('should rebuild on workflow change', { timeout: 30_000 }, async () => {
       const workflowFile = path.join(appPath, workflowsDir, testWorkflowFile);
@@ -215,6 +230,10 @@ export async function myNewStep() {
         check: async () => {
           const stepRouteContent = await fs.readFile(generatedStep, 'utf8');
           if (stepRouteContent.includes('myNewStep')) {
+            return;
+          }
+          if (!supportsDeferredStepCopies) {
+            expect(stepRouteContent).toContain('myNewStep');
             return;
           }
 

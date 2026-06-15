@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { getWorkflowQueueTrigger, STEP_QUEUE_TRIGGER } from './constants.js';
+import {
+  createWorkflowEntrypointOptionsCode,
+  createWorkflowQueueTrigger,
+  getWorkflowQueueTrigger,
+  STEP_QUEUE_TRIGGER,
+} from './constants.js';
 
 describe('getWorkflowQueueTrigger', () => {
   let originalStrict: string | undefined;
@@ -42,5 +47,51 @@ describe('getWorkflowQueueTrigger', () => {
   it('never applies concurrency to the step trigger', () => {
     process.env.WORKFLOW_SEQUENTIAL_REPLAYS = '1';
     expect('maxConcurrency' in STEP_QUEUE_TRIGGER).toBe(false);
+  });
+});
+
+describe('createWorkflowQueueTrigger', () => {
+  afterEach(() => {
+    delete process.env.WORKFLOW_QUEUE_NAMESPACE;
+  });
+
+  it('uses the default workflow topic without a namespace', () => {
+    expect(createWorkflowQueueTrigger().topic).toBe('__wkf_workflow_*');
+  });
+
+  it('uses an explicit namespace when provided', () => {
+    expect(createWorkflowQueueTrigger({ namespace: 'custom' }).topic).toBe(
+      '__custom_wkf_workflow_*'
+    );
+  });
+
+  it('uses WORKFLOW_QUEUE_NAMESPACE when no explicit namespace is provided', () => {
+    process.env.WORKFLOW_QUEUE_NAMESPACE = 'custom';
+
+    expect(createWorkflowQueueTrigger().topic).toBe('__custom_wkf_workflow_*');
+  });
+});
+
+describe('createWorkflowEntrypointOptionsCode', () => {
+  afterEach(() => {
+    delete process.env.WORKFLOW_QUEUE_NAMESPACE;
+  });
+
+  it('omits runtime options without a namespace', () => {
+    expect(createWorkflowEntrypointOptionsCode()).toBe('');
+  });
+
+  it('inlines an explicit namespace', () => {
+    expect(createWorkflowEntrypointOptionsCode({ namespace: 'custom' })).toBe(
+      ', { namespace: "custom" }'
+    );
+  });
+
+  it('inlines WORKFLOW_QUEUE_NAMESPACE at build time', () => {
+    process.env.WORKFLOW_QUEUE_NAMESPACE = 'custom';
+
+    expect(createWorkflowEntrypointOptionsCode()).toBe(
+      ', { namespace: "custom" }'
+    );
   });
 });

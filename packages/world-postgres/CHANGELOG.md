@@ -1,5 +1,40 @@
 # @workflow/world-postgres
 
+## 4.2.0
+
+### Minor Changes
+
+- [#2305](https://github.com/vercel/workflow/pull/2305) [`9c667e0`](https://github.com/vercel/workflow/commit/9c667e05c2aad0158698099ac84a846e10ed5700) Thanks [@willsather](https://github.com/willsather)! - Add an optional `namespace` parameter that scopes queue topic prefixes to `__{namespace}_wkf_workflow_*`. This allows configuring multiple frameworks in the same deployment without queue topic collision.
+
+### Patch Changes
+
+- [#2399](https://github.com/vercel/workflow/pull/2399) [`b5569a8`](https://github.com/vercel/workflow/commit/b5569a859052d0e3a7e43f2143cabef3e298c567) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Update @vercel/queues from 0.3.0 to 0.3.1, which adds native retries for 429s and ECONNRESET
+
+- Updated dependencies [[`9c667e0`](https://github.com/vercel/workflow/commit/9c667e05c2aad0158698099ac84a846e10ed5700), [`b5569a8`](https://github.com/vercel/workflow/commit/b5569a859052d0e3a7e43f2143cabef3e298c567)]:
+  - @workflow/world@4.2.0
+  - @workflow/world-local@4.2.0
+  - @workflow/errors@4.1.4
+
+## 4.1.5
+
+### Patch Changes
+
+- [#2012](https://github.com/vercel/workflow/pull/2012) [`326d93a`](https://github.com/vercel/workflow/commit/326d93a4aecb11a98a168e2409b5fae4d4c94167) Thanks [@pranaygp](https://github.com/pranaygp)! - Expose the active run ID on hook token conflict errors.
+
+- [#2246](https://github.com/vercel/workflow/pull/2246) [`c74e5a3`](https://github.com/vercel/workflow/commit/c74e5a35e480ef58d9b6da21e370b9b0cd723639) Thanks [@ctgowrie](https://github.com/ctgowrie)! - Update `@vercel/queue` from 0.1.7 to 0.2.1
+
+- [#2302](https://github.com/vercel/workflow/pull/2302) [`b93a071`](https://github.com/vercel/workflow/commit/b93a0717960dcdc9b8dc37f83cbebad8ec38f3b9) Thanks [@pranaygp](https://github.com/pranaygp)! - Update vulnerable package dependencies to patched releases.
+
+- [#2255](https://github.com/vercel/workflow/pull/2255) [`c8c8ec1`](https://github.com/vercel/workflow/commit/c8c8ec1d55ac02284c0b1f3049d1c34b6190b11f) Thanks [@ctgowrie](https://github.com/ctgowrie)! - Update @vercel/queue from 0.2.1 to 0.3.0
+
+- [#1799](https://github.com/vercel/workflow/pull/1799) [`eca3b51`](https://github.com/vercel/workflow/commit/eca3b51a034b51e0c0ca89b949ee28d1f07a2cbb) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Use inline sourcemaps for all workspace packages; published packages no longer ship external `.js.map` files.
+
+- Updated dependencies [[`a84a293`](https://github.com/vercel/workflow/commit/a84a293a229799c4b002fa769fa87b9b665ac9d9), [`326d93a`](https://github.com/vercel/workflow/commit/326d93a4aecb11a98a168e2409b5fae4d4c94167), [`95b3477`](https://github.com/vercel/workflow/commit/95b34775cd44e3de686e9a16a29618378cb0f32f), [`c74e5a3`](https://github.com/vercel/workflow/commit/c74e5a35e480ef58d9b6da21e370b9b0cd723639), [`b385a2d`](https://github.com/vercel/workflow/commit/b385a2d6ebf35d665d32029777d0cf4018bc82dd), [`c8c8ec1`](https://github.com/vercel/workflow/commit/c8c8ec1d55ac02284c0b1f3049d1c34b6190b11f), [`eca3b51`](https://github.com/vercel/workflow/commit/eca3b51a034b51e0c0ca89b949ee28d1f07a2cbb)]:
+  - @workflow/world-local@4.1.5
+  - @workflow/errors@4.1.4
+  - @workflow/world@4.1.5
+  - @workflow/utils@4.1.3
+
 ## 4.1.4
 
 ### Patch Changes

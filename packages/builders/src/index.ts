@@ -10,6 +10,9 @@ export {
   getDecoratorOptionsForDirectoryWithConfigPath,
 } from './config-helpers.js';
 export {
+  createStepQueueTrigger,
+  createWorkflowEntrypointOptionsCode,
+  createWorkflowQueueTrigger,
   getWorkflowQueueTrigger,
   STEP_QUEUE_TRIGGER,
   WORKFLOW_QUEUE_TRIGGER,

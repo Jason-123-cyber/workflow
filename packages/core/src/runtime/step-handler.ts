@@ -1,4 +1,3 @@
-import { waitUntil } from '@vercel/functions';
 import {
   EntityConflictError,
   FatalError,
@@ -13,6 +12,8 @@ import {
 import { pluralize } from '@workflow/utils';
 import { getPort } from '@workflow/utils/get-port';
 import {
+  getQueueTopicPrefix,
+  resolveQueueNamespace,
   SPEC_VERSION_CURRENT,
   type Step,
   StepInvokePayloadSchema,
@@ -38,6 +39,7 @@ import {
   getErrorStack,
   normalizeUnknownError,
 } from '../types.js';
+
 import { MAX_QUEUE_DELIVERIES } from './constants.js';
 import {
   getQueueOverhead,
@@ -47,14 +49,18 @@ import {
   queueMessage,
   withHealthCheck,
 } from './helpers.js';
+import { safeWaitUntil } from './wait-until.js';
 import { getWorld, getWorldHandlers } from './world.js';
 
 const DEFAULT_STEP_MAX_RETRIES = 3;
 
+const stepNamespace = resolveQueueNamespace();
+const stepPrefix = getQueueTopicPrefix('step', stepNamespace);
+
 const { createQueueHandler, specVersion: worldSpecVersion } =
   getWorldHandlers();
 const stepHandler = createQueueHandler(
-  '__wkf_step_',
+  stepPrefix,
   async (message_, metadata) => {
     // Check if this is a health check message
     // NOTE: Health check messages are intentionally unauthenticated for monitoring purposes.
@@ -75,7 +81,7 @@ const stepHandler = createQueueHandler(
       requestedAt,
     } = StepInvokePayloadSchema.parse(message_);
     const { requestId } = metadata;
-    const stepNameFromQueue = metadata.queueName.slice('__wkf_step_'.length);
+    const stepNameFromQueue = metadata.queueName.slice(stepPrefix.length);
 
     // --- Max delivery check ---
     // Enforce max delivery limit before any infrastructure calls.
@@ -110,11 +116,15 @@ const stepHandler = createQueueHandler(
           { requestId }
         );
         // Re-queue the workflow to handle the failed step
-        await queueMessage(world, getWorkflowQueueName(workflowName), {
-          runId: workflowRunId,
-          traceCarrier: await serializeTraceCarrier(),
-          requestedAt: new Date(),
-        });
+        await queueMessage(
+          world,
+          getWorkflowQueueName(workflowName, stepNamespace),
+          {
+            runId: workflowRunId,
+            traceCarrier: await serializeTraceCarrier(),
+            requestedAt: new Date(),
+          }
+        );
       } catch (err) {
         if (EntityConflictError.is(err) || RunExpiredError.is(err)) {
           return;
@@ -142,7 +152,7 @@ const stepHandler = createQueueHandler(
     // Execute step within the propagated trace context
     return await withTraceContext(traceContext, async () => {
       // Extract the step name from the topic name
-      const stepName = metadata.queueName.slice('__wkf_step_'.length);
+      const stepName = metadata.queueName.slice(stepPrefix.length);
       const world = getWorld();
       const isVercel = process.env.VERCEL_URL !== undefined;
 
@@ -242,11 +252,15 @@ const stepHandler = createQueueHandler(
                 'step.name': stepName,
                 'step.id': stepId,
               });
-              await queueMessage(world, getWorkflowQueueName(workflowName), {
-                runId: workflowRunId,
-                traceCarrier: await serializeTraceCarrier(),
-                requestedAt: new Date(),
-              });
+              await queueMessage(
+                world,
+                getWorkflowQueueName(workflowName, stepNamespace),
+                {
+                  runId: workflowRunId,
+                  traceCarrier: await serializeTraceCarrier(),
+                  requestedAt: new Date(),
+                }
+              );
               return;
             }
 
@@ -341,11 +355,15 @@ const stepHandler = createQueueHandler(
             });
 
             // Re-invoke the workflow to handle the failed step
-            await queueMessage(world, getWorkflowQueueName(workflowName), {
-              runId: workflowRunId,
-              traceCarrier: await serializeTraceCarrier(),
-              requestedAt: new Date(),
-            });
+            await queueMessage(
+              world,
+              getWorkflowQueueName(workflowName, stepNamespace),
+              {
+                runId: workflowRunId,
+                traceCarrier: await serializeTraceCarrier(),
+                requestedAt: new Date(),
+              }
+            );
             return;
           }
 
@@ -408,11 +426,15 @@ const stepHandler = createQueueHandler(
             });
 
             // Re-invoke the workflow to handle the failed step
-            await queueMessage(world, getWorkflowQueueName(workflowName), {
-              runId: workflowRunId,
-              traceCarrier: await serializeTraceCarrier(),
-              requestedAt: new Date(),
-            });
+            await queueMessage(
+              world,
+              getWorkflowQueueName(workflowName, stepNamespace),
+              {
+                runId: workflowRunId,
+                traceCarrier: await serializeTraceCarrier(),
+                requestedAt: new Date(),
+              }
+            );
             return;
           }
 
@@ -455,11 +477,15 @@ const stepHandler = createQueueHandler(
               throw failErr;
             }
             // Re-queue the workflow so it can process the step failure
-            await queueMessage(world, getWorkflowQueueName(workflowName), {
-              runId: workflowRunId,
-              traceCarrier: await serializeTraceCarrier(),
-              requestedAt: new Date(),
-            });
+            await queueMessage(
+              world,
+              getWorkflowQueueName(workflowName, stepNamespace),
+              {
+                runId: workflowRunId,
+                traceCarrier: await serializeTraceCarrier(),
+                requestedAt: new Date(),
+              }
+            );
             return;
           }
           // Capture startedAt for use in async callback (TypeScript narrowing doesn't persist)
@@ -780,11 +806,15 @@ const stepHandler = createQueueHandler(
             }
 
             // Re-invoke the workflow to handle the failed/retrying step
-            await queueMessage(world, getWorkflowQueueName(workflowName), {
-              runId: workflowRunId,
-              traceCarrier: await serializeTraceCarrier(),
-              requestedAt: new Date(),
-            });
+            await queueMessage(
+              world,
+              getWorkflowQueueName(workflowName, stepNamespace),
+              {
+                runId: workflowRunId,
+                traceCarrier: await serializeTraceCarrier(),
+                requestedAt: new Date(),
+              }
+            );
             return;
           }
 
@@ -813,14 +843,17 @@ const stepHandler = createQueueHandler(
             return dehydrated;
           });
 
-          waitUntil(
-            Promise.all(ops).catch((err) => {
-              // Ignore expected client disconnect errors (e.g., browser refresh during streaming)
-              const isAbortError =
-                err?.name === 'AbortError' || err?.name === 'ResponseAborted';
-              if (!isAbortError) throw err;
-            })
-          );
+          // These stream ops are flushed in the background; the promise
+          // handed to waitUntil must never reject (an unconsumed waitUntil
+          // rejection crashes the process as unhandledRejection), so
+          // unexpected failures are logged instead.
+          safeWaitUntil(Promise.all(ops), (err) => {
+            runtimeLogger.warn('Background flush of step stream ops failed', {
+              workflowRunId,
+              stepId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
 
           // Run step_completed and trace serialization concurrently;
           // the trace carrier is used in the final queueMessage call below
@@ -869,11 +902,15 @@ const stepHandler = createQueueHandler(
           });
 
           // Queue the workflow continuation with the concurrently-resolved trace carrier
-          await queueMessage(world, getWorkflowQueueName(workflowName), {
-            runId: workflowRunId,
-            traceCarrier,
-            requestedAt: new Date(),
-          });
+          await queueMessage(
+            world,
+            getWorkflowQueueName(workflowName, stepNamespace),
+            {
+              runId: workflowRunId,
+              traceCarrier,
+              requestedAt: new Date(),
+            }
+          );
         }
       );
     });

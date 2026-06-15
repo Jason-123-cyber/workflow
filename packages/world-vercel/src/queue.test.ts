@@ -427,6 +427,34 @@ describe('createQueue', () => {
 
       expect(mockSend.mock.calls[0][0]).toBe('__wkf_workflow_health_check');
     });
+
+    it('appends runId to namespaced flow topics so it composes with WORKFLOW_QUEUE_NAMESPACE', async () => {
+      process.env.WORKFLOW_SEQUENTIAL_REPLAYS = '1';
+
+      const queue = createQueue();
+      await queue.queue('__custom_wkf_workflow_test', { runId: 'wrun_abc' });
+
+      expect(mockSend.mock.calls[0][0]).toBe(
+        '__custom_wkf_workflow_test_wrun_abc'
+      );
+      expect(mockSend.mock.calls[0][1].queueName).toBe(
+        '__custom_wkf_workflow_test'
+      );
+    });
+
+    it('does not rewrite namespaced step topics even when the flag is set', async () => {
+      process.env.WORKFLOW_SEQUENTIAL_REPLAYS = '1';
+
+      const queue = createQueue();
+      await queue.queue('__custom_wkf_step_myStep', {
+        workflowName: 'test-workflow',
+        workflowRunId: 'wrun_abc',
+        workflowStartedAt: Date.now(),
+        stepId: 'step_xyz',
+      });
+
+      expect(mockSend.mock.calls[0][0]).toBe('__custom_wkf_step_myStep');
+    });
   });
 
   describe('createQueueHandler()', () => {

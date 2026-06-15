@@ -1,5 +1,4 @@
 import type { Span } from '@opentelemetry/api';
-import { waitUntil } from '@vercel/functions';
 import {
   EntityConflictError,
   HookNotFoundError,
@@ -54,6 +53,68 @@ export interface SuspensionHandlerResult {
   timeoutSeconds?: number;
 }
 
+async function createHookEvent({
+  world,
+  runId,
+  hookEvent,
+  queueItem,
+  requestId,
+}: {
+  world: World;
+  runId: string;
+  hookEvent: CreateEventRequest;
+  queueItem: HookInvocationQueueItem;
+  requestId?: string;
+}): Promise<{
+  hasHookConflict: boolean;
+  hasAwaitedHookCreation: boolean;
+}> {
+  try {
+    const result = await world.events.create(runId, hookEvent, {
+      requestId,
+    });
+
+    // Check if the world returned a hook_conflict event instead of hook_created.
+    // The hook_conflict event is stored in the event log and will be replayed
+    // on the next workflow invocation, causing the hook's promise to reject.
+    if (result.event?.eventType === 'hook_conflict') {
+      return {
+        hasHookConflict: true,
+        hasAwaitedHookCreation: false,
+      };
+    }
+
+    return {
+      hasHookConflict: false,
+      hasAwaitedHookCreation: queueItem.hasConflictAwaiter === true,
+    };
+  } catch (err) {
+    if (EntityConflictError.is(err)) {
+      runtimeLogger.info('Hook already exists, continuing', {
+        workflowRunId: runId,
+        message: err.message,
+      });
+      return {
+        hasHookConflict: false,
+        hasAwaitedHookCreation: queueItem.hasConflictAwaiter === true,
+      };
+    }
+
+    if (RunExpiredError.is(err)) {
+      runtimeLogger.info('Workflow run already completed, skipping hook', {
+        workflowRunId: runId,
+        message: err.message,
+      });
+      return {
+        hasHookConflict: false,
+        hasAwaitedHookCreation: false,
+      };
+    }
+
+    throw err;
+  }
+}
+
 /**
  * Handles a workflow suspension by processing all pending operations (hooks, steps, waits).
  * Uses an event-sourced architecture where entities (steps, hooks) are created atomically
@@ -97,7 +158,7 @@ export async function handleSuspension({
   const encryptionKey = rawKey ? await importKey(rawKey) : undefined;
 
   // Build hook_created events (World will atomically create hook entities)
-  const hookEvents: CreateEventRequest[] = await Promise.all(
+  const hookEvents = await Promise.all(
     hooksNeedingCreation.map(async (queueItem) => {
       const hookMetadata: SerializedData | undefined =
         typeof queueItem.metadata === 'undefined'
@@ -109,13 +170,16 @@ export async function handleSuspension({
               suspension.globalThis
             )) as SerializedData);
       return {
-        eventType: 'hook_created' as const,
-        specVersion: SPEC_VERSION_CURRENT,
-        correlationId: queueItem.correlationId,
-        eventData: {
-          token: queueItem.token,
-          metadata: hookMetadata,
-          isWebhook: queueItem.isWebhook ?? false,
+        queueItem,
+        hookEvent: {
+          eventType: 'hook_created' as const,
+          specVersion: SPEC_VERSION_CURRENT,
+          correlationId: queueItem.correlationId,
+          eventData: {
+            token: queueItem.token,
+            metadata: hookMetadata,
+            isWebhook: queueItem.isWebhook ?? false,
+          },
         },
       };
     })
@@ -125,35 +189,23 @@ export async function handleSuspension({
   // All hook creations run in parallel
   // Track any hook conflicts that occur - these will be handled by re-enqueueing the workflow
   let hasHookConflict = false;
+  let hasAwaitedHookCreation = false;
 
   if (hookEvents.length > 0) {
-    await Promise.all(
-      hookEvents.map(async (hookEvent) => {
-        try {
-          const result = await world.events.create(runId, hookEvent, {
-            requestId,
-          });
-          // Check if the world returned a hook_conflict event instead of hook_created
-          // The hook_conflict event is stored in the event log and will be replayed
-          // on the next workflow invocation, causing the hook's promise to reject
-          // Note: hook events always create an event (legacy runs throw, not return undefined)
-          if (result.event!.eventType === 'hook_conflict') {
-            hasHookConflict = true;
-          }
-        } catch (err) {
-          if (EntityConflictError.is(err) || RunExpiredError.is(err)) {
-            runtimeLogger.info(
-              'Workflow run already completed, skipping hook',
-              {
-                workflowRunId: runId,
-                message: err.message,
-              }
-            );
-          } else {
-            throw err;
-          }
-        }
-      })
+    const results = await Promise.all(
+      hookEvents.map(({ hookEvent, queueItem }) =>
+        createHookEvent({
+          world,
+          runId,
+          hookEvent,
+          queueItem,
+          requestId,
+        })
+      )
+    );
+    hasHookConflict = results.some((result) => result.hasHookConflict);
+    hasAwaitedHookCreation = results.some(
+      (result) => result.hasAwaitedHookCreation
     );
   }
 
@@ -316,14 +368,14 @@ export async function handleSuspension({
     }
   }
 
-  // Wait for all step and wait operations to complete
-  waitUntil(
-    Promise.all(ops).catch((opErr) => {
-      const isAbortError =
-        opErr?.name === 'AbortError' || opErr?.name === 'ResponseAborted';
-      if (!isAbortError) throw opErr;
-    })
-  );
+  // Await the step_created / wait_created event creates before returning.
+  // The caller (workflowEntrypoint) only enqueues the step-dispatch queue
+  // messages AFTER handleSuspension resolves, and the queue handler acks
+  // the orchestrator message only after the caller resolves. So the step_created
+  // events must be durable here, and the dispatch sends must complete in the caller,
+  // all before ack. If the process crashes before this resolves, the orchestrator
+  // message is not acked and VQS redelivers, re-creates the (idempotent)
+  // step_created and re-dispatches, and recovers the run instead of orphaning it.
   await Promise.all(ops);
 
   // Calculate minimum timeout from waits
@@ -352,6 +404,15 @@ export async function handleSuspension({
   // We do this after processing all other operations (steps, waits) to ensure
   // they are recorded in the event log before the re-execution
   if (hasHookConflict) {
+    return { timeoutSeconds: 0 };
+  }
+
+  // A `hook.getConflict()` awaiter needs an immediate re-invocation: the
+  // replay consumes the just-committed hook_created and resolves the
+  // awaiter with `null`. Without it the run would sit idle until some
+  // unrelated message woke it. Any pending steps were already queued
+  // above, so they execute in parallel invocations regardless.
+  if (hasAwaitedHookCreation) {
     return { timeoutSeconds: 0 };
   }
 

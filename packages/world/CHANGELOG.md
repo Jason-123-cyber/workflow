@@ -1,5 +1,19 @@
 # @workflow/world
 
+## 4.2.0
+
+### Minor Changes
+
+- [#2305](https://github.com/vercel/workflow/pull/2305) [`9c667e0`](https://github.com/vercel/workflow/commit/9c667e05c2aad0158698099ac84a846e10ed5700) Thanks [@willsather](https://github.com/willsather)! - Add an optional `namespace` parameter that scopes queue topic prefixes to `__{namespace}_wkf_workflow_*`. This allows configuring multiple frameworks in the same deployment without queue topic collision.
+
+## 4.1.5
+
+### Patch Changes
+
+- [#2012](https://github.com/vercel/workflow/pull/2012) [`326d93a`](https://github.com/vercel/workflow/commit/326d93a4aecb11a98a168e2409b5fae4d4c94167) Thanks [@pranaygp](https://github.com/pranaygp)! - Expose the active run ID on hook token conflict errors.
+
+- [#1799](https://github.com/vercel/workflow/pull/1799) [`eca3b51`](https://github.com/vercel/workflow/commit/eca3b51a034b51e0c0ca89b949ee28d1f07a2cbb) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Use inline sourcemaps for all workspace packages; published packages no longer ship external `.js.map` files.
+
 ## 4.1.4
 
 ### Patch Changes

@@ -1,5 +1,21 @@
 # @workflow/vite
 
+## 4.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`15507bd`](https://github.com/vercel/workflow/commit/15507bdccf8bb62b9d3fd5646428ada33c29caec), [`9c667e0`](https://github.com/vercel/workflow/commit/9c667e05c2aad0158698099ac84a846e10ed5700)]:
+  - @workflow/builders@4.1.0
+
+## 4.0.9
+
+### Patch Changes
+
+- [#1799](https://github.com/vercel/workflow/pull/1799) [`eca3b51`](https://github.com/vercel/workflow/commit/eca3b51a034b51e0c0ca89b949ee28d1f07a2cbb) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Use inline sourcemaps for all workspace packages; published packages no longer ship external `.js.map` files.
+
+- Updated dependencies [[`b93a071`](https://github.com/vercel/workflow/commit/b93a0717960dcdc9b8dc37f83cbebad8ec38f3b9), [`eca3b51`](https://github.com/vercel/workflow/commit/eca3b51a034b51e0c0ca89b949ee28d1f07a2cbb)]:
+  - @workflow/builders@4.0.10
+
 ## 4.0.8
 
 ### Patch Changes

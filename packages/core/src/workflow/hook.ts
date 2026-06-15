@@ -13,6 +13,32 @@ import {
 } from '../private.js';
 import { hydrateStepReturnValue } from '../serialization.js';
 
+/**
+ * The shape resolved by `hook.getConflict()` when another active hook
+ * owns the token: a plain `{ runId }` object identifying the owning run.
+ * To act on the owner — inspect its status, await its result, or cancel
+ * it — the workflow passes `conflict.runId` to `getRun()` inside a step.
+ */
+type ConflictingRun = { runId: string };
+
+/**
+ * Constructs the `{ runId }` handle for the run that owns a conflicting
+ * hook token, for resolution through `hook.getConflict()`.
+ *
+ * Returns `null` when the conflicting run cannot be identified: the
+ * conflict event lacks `conflictingRunId` (written by an old world).
+ * `getConflict` awaiters then reject with `HookConflictError` instead of
+ * resolving with an incomplete value.
+ */
+function createConflictingRun(
+  conflictingRunId: string | undefined
+): ConflictingRun | null {
+  if (typeof conflictingRunId !== 'string') {
+    return null;
+  }
+  return { runId: conflictingRunId };
+}
+
 export function createCreateHook(ctx: WorkflowOrchestratorContext) {
   return function createHookImpl<T = any>(options: HookOptions = {}): Hook<T> {
     // Generate hook ID and token
@@ -40,7 +66,16 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
     // Queue of promises that resolve to the next hook payload
     const promises: PromiseWithResolvers<T>[] = [];
 
+    // Queue of promises that resolve once hook registration is confirmed
+    // (with `null`) or a token conflict is detected (with the conflicting
+    // `{ runId }`). These back the `hook.getConflict()` method.
+    const getConflictPromises: PromiseWithResolvers<ConflictingRun | null>[] =
+      [];
+
     let eventLogEmpty = false;
+
+    // Track if the event log confirms hook creation happened
+    let hasCreated = false;
 
     // Track if the event log confirms disposal happened (replay no-op)
     let hasDisposedEvent = false;
@@ -48,6 +83,9 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
     // Track if we have a conflict so we can reject future awaits
     let hasConflict = false;
     let conflictErrorRef: HookConflictError | null = null;
+    // The conflicting run handle, shared by every `getConflict` await so
+    // repeated awaits observe the same instance deterministically.
+    let conflictRunRef: ConflictingRun | null = null;
 
     webhookLogger.debug('Hook consumer setup', { correlationId, token });
     ctx.eventsConsumer.subscribe((event) => {
@@ -57,7 +95,10 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
       if (!event) {
         eventLogEmpty = true;
 
-        if (promises.length > 0 && payloadsQueue.length === 0) {
+        if (
+          (promises.length > 0 && payloadsQueue.length === 0) ||
+          (getConflictPromises.length > 0 && !hasCreated && !hasConflict)
+        ) {
           scheduleWhenIdle(ctx, () => {
             ctx.onWorkflowError(
               new WorkflowSuspension(ctx.invocationsQueue, ctx.globalThis)
@@ -95,6 +136,16 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
         if (queueItem && queueItem.type === 'hook') {
           queueItem.hasCreatedEvent = true;
         }
+        hasCreated = true;
+
+        const pendingGetConflictPromises = getConflictPromises.slice();
+        getConflictPromises.length = 0;
+        ctx.promiseQueue = ctx.promiseQueue.then(() => {
+          for (const resolver of pendingGetConflictPromises) {
+            resolver.resolve(null);
+          }
+        });
+
         return EventConsumerResult.Consumed;
       }
 
@@ -107,22 +158,41 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
         // Chain through promiseQueue to ensure deterministic ordering.
         const conflictEvent = event as HookConflictEvent;
         const conflictError = new HookConflictError(
-          conflictEvent.eventData.token
+          conflictEvent.eventData.token,
+          conflictEvent.eventData.conflictingRunId
         );
 
         // Mark that we have a conflict so future awaits also reject
         hasConflict = true;
         conflictErrorRef = conflictError;
+        conflictRunRef = createConflictingRun(
+          conflictEvent.eventData.conflictingRunId
+        );
 
         // Capture and drain pending promises synchronously so the null event
         // handler won't see them and trigger a spurious WorkflowSuspension.
-        // The actual rejections are deferred through promiseQueue for ordering.
+        // The actual settlements are deferred through promiseQueue for
+        // ordering. Payload awaiters reject with HookConflictError, while
+        // `getConflict` awaiters resolve with the conflicting `{ runId }`
+        // so the workflow can branch on the conflict without throwing.
+        // When the conflicting run cannot be identified (see
+        // `createConflictingRun`), `getConflict` awaiters reject with the
+        // HookConflictError instead of resolving with an incomplete value.
         const pendingPromises = promises.slice();
         promises.length = 0;
+        const pendingGetConflictPromises = getConflictPromises.slice();
+        getConflictPromises.length = 0;
 
         ctx.promiseQueue = ctx.promiseQueue.then(() => {
           for (const resolver of pendingPromises) {
             resolver.reject(conflictError);
+          }
+          for (const resolver of pendingGetConflictPromises) {
+            if (conflictRunRef) {
+              resolver.resolve(conflictRunRef);
+            } else {
+              resolver.reject(conflictError);
+            }
           }
         });
 
@@ -290,6 +360,49 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
       return resolvers.promise;
     }
 
+    // Helper function to create a promise that resolves with the hook's
+    // registration outcome: the conflicting `{ runId }` when the token is
+    // owned by another active hook, `null` once this hook's registration
+    // is committed. Both fast-paths settle through `ctx.promiseQueue` so
+    // resolution order always matches event-log order.
+    function createGetConflictPromise(): Promise<ConflictingRun | null> {
+      const resolvers = withResolvers<ConflictingRun | null>();
+
+      if (hasCreated) {
+        ctx.promiseQueue = ctx.promiseQueue.then(() => {
+          resolvers.resolve(null);
+        });
+        return resolvers.promise;
+      }
+
+      if (hasConflict) {
+        ctx.promiseQueue = ctx.promiseQueue.then(() => {
+          if (conflictRunRef) {
+            resolvers.resolve(conflictRunRef);
+          } else {
+            resolvers.reject(conflictErrorRef);
+          }
+        });
+        return resolvers.promise;
+      }
+
+      const queueItem = ctx.invocationsQueue.get(correlationId);
+      if (queueItem && queueItem.type === 'hook') {
+        queueItem.hasConflictAwaiter = true;
+      }
+
+      if (eventLogEmpty) {
+        scheduleWhenIdle(ctx, () => {
+          ctx.onWorkflowError(
+            new WorkflowSuspension(ctx.invocationsQueue, ctx.globalThis)
+          );
+        });
+      }
+
+      getConflictPromises.push(resolvers);
+      return resolvers.promise;
+    }
+
     // Helper function to dispose the hook
     function disposeHook(): void {
       if (isDisposed) {
@@ -326,6 +439,10 @@ export function createCreateHook(ctx: WorkflowOrchestratorContext) {
 
     const hook: Hook<T> = {
       token,
+
+      getConflict(): Promise<ConflictingRun | null> {
+        return createGetConflictPromise();
+      },
 
       // biome-ignore lint/suspicious/noThenProperty: Intentionally thenable
       then<TResult1 = T, TResult2 = never>(

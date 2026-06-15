@@ -44,14 +44,29 @@ const HTTP_DEBUG_ENABLED =
 function httpLog(
   method: string,
   endpoint: string,
-  status: number,
+  response: Response,
   ms: number
 ): void {
   if (HTTP_DEBUG_ENABLED) {
+    const responseContext = getResponseDiagnosticHeaders(response);
+    const diagnosticSuffix =
+      responseContext.length > 0 ? `; ${responseContext.join('; ')}` : '';
     console.debug(
-      `[workflow:world-vercel:http] ${method} ${endpoint} -> ${status} (${ms}ms)`
+      `[workflow:world-vercel:http] ${method} ${endpoint} -> ${response.status} (${ms}ms${diagnosticSuffix})`
     );
   }
+}
+
+function getResponseDiagnosticHeaders(response: Response): string[] {
+  return ['x-vercel-id', 'x-vercel-error'].flatMap((header) => {
+    const value = response.headers.get(header);
+    return value ? [`${header}=${value}`] : [];
+  });
+}
+
+function formatResponseDiagnostics(response: Response): string {
+  const headers = getResponseDiagnosticHeaders(response);
+  return headers.length > 0 ? ` (${headers.join('; ')})` : '';
 }
 
 /**
@@ -106,6 +121,17 @@ const getWorkflowServerUrlOverride = (): string =>
 export interface APIConfig {
   token?: string;
   headers?: RequestInit['headers'];
+  /**
+   * Custom HTTP dispatcher passed to every `fetch()` call (e.g. an undici
+   * `Agent`/`RetryAgent`). Defaults to a shared undici `RetryAgent`.
+   *
+   * Typed as `unknown` on purpose: undici's `Dispatcher` type is nominally
+   * version-specific (it differs across v6/v7/v8 and the `undici-types`
+   * bundled with each `@types/node` major), so a concrete type would reject a
+   * dispatcher from a different undici version. Callers may pass any undici
+   * version's dispatcher, or any object implementing the dispatcher contract.
+   */
+  dispatcher?: unknown;
   projectConfig?: {
     /** The real Vercel project ID (e.g., prj_xxx) */
     projectId?: string;
@@ -389,6 +415,7 @@ export async function makeRequest<T>({
       // write must not be replayed (it could be applied twice).
       const canRetryBody = IDEMPOTENT_METHODS.has(method.toUpperCase());
       let parseResult: ParseResult;
+      let responseDiagnostics = '';
       for (let attempt = 0; ; attempt++) {
         // NOTE: Set a unique header on every attempt to bypass RSC request
         // memoization (and to avoid replaying a memoized truncated body).
@@ -412,7 +439,7 @@ export async function makeRequest<T>({
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- undici v7 dispatcher types don't match @types/node's RequestInit
           response = await fetch(request, {
-            dispatcher: getDispatcher(),
+            dispatcher: getDispatcher(config),
           } as any);
         } catch (error) {
           const elapsed = Date.now() - fetchStart;
@@ -435,7 +462,8 @@ export async function makeRequest<T>({
         }
         const fetchMs = Date.now() - fetchStart;
 
-        httpLog(method, endpoint, response.status, fetchMs);
+        responseDiagnostics = formatResponseDiagnostics(response);
+        httpLog(method, endpoint, response, fetchMs);
 
         span?.setAttributes({
           ...HttpResponseStatusCode(response.status),
@@ -470,8 +498,9 @@ export async function makeRequest<T>({
           }
 
           const defaultMessage =
-            errorData.message ||
-            `${request.method} ${endpoint} -> HTTP ${response.status}: ${response.statusText}`;
+            (errorData.message ||
+              `${request.method} ${endpoint} -> HTTP ${response.status}: ${response.statusText}`) +
+            responseDiagnostics;
 
           // Map specific HTTP status codes to semantic error types
           const throwWithTrace = (error: Error): never => {
@@ -538,7 +567,7 @@ export async function makeRequest<T>({
           }
           const contentType = response.headers.get('Content-Type') || 'unknown';
           throw new WorkflowWorldError(
-            `Failed to parse response body for ${method} ${endpoint} (Content-Type: ${contentType}):\n\n${error}`,
+            `Failed to parse response body for ${method} ${endpoint}${responseDiagnostics} (Content-Type: ${contentType}):\n\n${error}`,
             { url, code: 'PARSE_ERROR', cause: error }
           );
         }
@@ -558,7 +587,7 @@ export async function makeRequest<T>({
             ? `\n\nResponse context: ${parseResult.getDebugContext()}`
             : '';
           throw new WorkflowWorldError(
-            `Schema validation failed for ${method} ${endpoint}:\n${issues}${debugContext}`,
+            `Schema validation failed for ${method} ${endpoint}${responseDiagnostics}:\n${issues}${debugContext}`,
             { url, code: 'SCHEMA_VALIDATION', cause: validationResult.error }
           );
         }

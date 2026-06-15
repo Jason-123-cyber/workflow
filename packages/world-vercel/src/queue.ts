@@ -185,14 +185,21 @@ function getHeadersFromPayload(
  * on the flow trigger enforces at most one orchestrator invocation per run
  * at a time. Step topics and health checks (which carry no `runId`) keep
  * their shared topic.
+ *
+ * The flow-topic match allows an optional queue namespace prefix
+ * (`__<namespace>_wkf_workflow_`, see `@workflow/builders` constants) so the
+ * behavior composes with `WORKFLOW_QUEUE_NAMESPACE`. Step topics
+ * (`*_wkf_step_`) are intentionally excluded.
  */
+const FLOW_TOPIC_PATTERN = /^__([a-z][a-z0-9]*_)?wkf_workflow_/;
+
 function getPhysicalQueueName(
   queueName: ValidQueueName,
   payload: QueuePayload
 ): string {
   if (
     process.env.WORKFLOW_SEQUENTIAL_REPLAYS === '1' &&
-    queueName.startsWith('__wkf_workflow_') &&
+    FLOW_TOPIC_PATTERN.test(queueName) &&
     'runId' in payload &&
     typeof payload.runId === 'string'
   ) {
@@ -219,7 +226,7 @@ export function createQueue(config?: APIConfig): Queue {
 
   const clientOptions = {
     region,
-    dispatcher: getDispatcher(),
+    dispatcher: getDispatcher(config),
     transport: dualTransport,
     ...(usingProxy && {
       // final path will be /queues-proxy/api/v3/topic/...
