@@ -27,7 +27,7 @@ function isNitroV2(nitro: Nitro): boolean {
   return !nitro.routing;
 }
 
-const nitroModule = {
+export const nitroModule = {
   name: 'workflow/nitro',
   async setup(nitro: Nitro): Promise<LocalBuilder | undefined> {
     const loadedWorkflowConfig = await loadWorkflowConfig({
@@ -330,10 +330,6 @@ const nitroModule = {
     }
   },
 };
-
-export function setupNitro(nitro: Nitro): Promise<LocalBuilder | undefined> {
-  return nitroModule.setup(nitro);
-}
 
 export default {
   name: nitroModule.name,
