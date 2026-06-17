@@ -58,7 +58,11 @@ Use the smallest directory that contains every workspace package imported by you
 
 ## Options
 
-`withWorkflow` accepts an optional second argument to configure the Next.js integration.
+Build and Next.js integration settings can be placed in
+[`workflow.config.ts`](/docs/foundations/configuration).
+
+`withWorkflow` also accepts an optional second argument. Values passed there
+take precedence over `workflow.config.ts`.
 
 ```typescript title="next.config.ts" lineNumbers
 import type { NextConfig } from "next";
@@ -101,7 +105,10 @@ Setting `sourcemap: false` is the main escape hatch for users hitting the Vercel
 Setting `sourcemap` explicitly affects **all** generated bundles (steps, workflows, webhook). The legacy `WORKFLOW_EMIT_SOURCEMAPS_FOR_DEBUGGING=1` environment variable is narrower — it only toggles source maps on the final workflow wrapper and webhook bundle (which default to off). It continues to work, but new code should use the `sourcemap` option or the `WORKFLOW_SOURCEMAP` environment variable instead.
 </Callout>
 
-The option can also be set via the `WORKFLOW_SOURCEMAP` environment variable, which accepts the same values plus `'0'` / `'1'` as aliases for `false` / `true`. Precedence is: explicit config > `WORKFLOW_SOURCEMAP` > per-bundle default.
+The option can also be set via the `WORKFLOW_SOURCEMAP` environment variable,
+which accepts the same values plus `'0'` / `'1'` as aliases for `false` /
+`true`. Precedence is: explicit `withWorkflow` option >
+`workflow.config.ts` > `WORKFLOW_SOURCEMAP` > per-bundle default.
 
 <Callout type="info">
 The `workflows.local` options only affect local development. When deployed to Vercel, the runtime ignores `local` settings and uses the Vercel world automatically.

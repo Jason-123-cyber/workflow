@@ -20,7 +20,10 @@ class TestBuilder extends BaseBuilder {
   }
 }
 
-function createBuilder(sourcemap?: SourcemapMode): TestBuilder {
+function createBuilder(
+  sourcemap?: SourcemapMode,
+  workflowSourcemap?: SourcemapMode
+): TestBuilder {
   const config: StandaloneConfig = {
     buildTarget: 'standalone',
     workingDir: '/tmp/workflow-test',
@@ -29,6 +32,13 @@ function createBuilder(sourcemap?: SourcemapMode): TestBuilder {
     workflowsBundlePath: '',
     webhookBundlePath: '',
     sourcemap,
+    workflowConfig:
+      workflowSourcemap === undefined
+        ? undefined
+        : {
+            found: false,
+            config: { build: { sourcemap: workflowSourcemap } },
+          },
   };
   return new TestBuilder(config);
 }
@@ -66,9 +76,18 @@ describe('resolveSourcemap', () => {
 
   it('prefers explicit config over environment variable', () => {
     process.env.WORKFLOW_SOURCEMAP = 'inline';
-    expect(createBuilder(false).callResolveSourcemap('inline')).toBe(false);
+    expect(createBuilder(false, true).callResolveSourcemap('inline')).toBe(
+      false
+    );
     expect(createBuilder('external').callResolveSourcemap('inline')).toBe(
       'external'
+    );
+  });
+
+  it('prefers workflow.config.ts over environment variable', () => {
+    process.env.WORKFLOW_SOURCEMAP = 'inline';
+    expect(createBuilder(undefined, false).callResolveSourcemap(true)).toBe(
+      false
     );
   });
 

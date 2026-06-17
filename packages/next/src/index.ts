@@ -1,6 +1,7 @@
 import { copyFileSync, mkdirSync, statSync } from 'node:fs';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import type { SourcemapMode, WorkflowConfigLoader } from '@workflow/config';
 import type { NextConfig } from 'next';
 import semver from 'semver';
 import {
@@ -32,6 +33,16 @@ const workflowSerdeComputedPropertyPattern =
 
 const PSEUDO_EXTERNAL_PACKAGES = new Set(['server-only', 'client-only']);
 const warnedAutoRemovedServerExternalPackages = new Set<string>();
+
+async function loadWorkflowConfigForNext() {
+  const { loadWorkflowConfig } = require('@workflow/config/load') as {
+    loadWorkflowConfig: WorkflowConfigLoader;
+  };
+  return loadWorkflowConfig({
+    cwd: process.cwd(),
+    integration: 'next',
+  });
+}
 
 interface WorkflowPatternMatch {
   hasUseWorkflow: boolean;
@@ -337,44 +348,10 @@ export function withWorkflow(
        * source maps. Can also be set via the `WORKFLOW_SOURCEMAP`
        * environment variable.
        */
-      sourcemap?: boolean | 'inline' | 'linked' | 'external' | 'both';
+      sourcemap?: SourcemapMode;
     };
   } = {}
 ) {
-  // lazyDiscovery defaults to true; pass `lazyDiscovery: false` to force eager
-  // discovery (scanning the project at startup) instead of deferring workflow
-  // discovery until files are requested. The `WORKFLOW_NEXT_LAZY_DISCOVERY`
-  // environment variable, if set, takes precedence over the option.
-  const lazyDiscoveryOverride = parseEnvironmentFlag(
-    process.env.WORKFLOW_NEXT_LAZY_DISCOVERY
-  );
-  if (lazyDiscoveryOverride === undefined) {
-    if (workflows?.lazyDiscovery === false) {
-      delete process.env.WORKFLOW_NEXT_LAZY_DISCOVERY;
-    } else {
-      process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = '1';
-    }
-  } else {
-    process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = lazyDiscoveryOverride
-      ? '1'
-      : '0';
-  }
-
-  if (!process.env.VERCEL_DEPLOYMENT_ID) {
-    if (!process.env.WORKFLOW_TARGET_WORLD) {
-      process.env.WORKFLOW_TARGET_WORLD = 'local';
-      process.env.WORKFLOW_LOCAL_DATA_DIR = '.next/workflow-data';
-    }
-    const maybePort = workflows?.local?.port;
-    if (maybePort) {
-      process.env.PORT = maybePort.toString();
-    }
-  } else {
-    if (!process.env.WORKFLOW_TARGET_WORLD) {
-      process.env.WORKFLOW_TARGET_WORLD = 'vercel';
-    }
-  }
-
   return async function buildConfig(
     phase: string,
     ctx: { defaultConfig: NextConfig }
@@ -391,9 +368,48 @@ export function withWorkflow(
     }
     // shallow clone to avoid read-only on top-level
     nextConfig = Object.assign({}, nextConfig);
+
+    const loadedWorkflowConfig = await loadWorkflowConfigForNext();
+    const workflowConfig = loadedWorkflowConfig.config;
+    const runtimeConfigPath = loadedWorkflowConfig.found
+      ? loadedWorkflowConfig.path
+      : undefined;
+    const nextIntegration =
+      workflowConfig.integration?.type === 'next'
+        ? workflowConfig.integration
+        : undefined;
+
+    // Call-site options take precedence over workflow.config.ts and env.
+    const lazyDiscovery =
+      workflows?.lazyDiscovery ??
+      nextIntegration?.lazyDiscovery ??
+      parseEnvironmentFlag(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY) ??
+      true;
+    process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = lazyDiscovery ? '1' : '0';
+
+    if (!process.env.VERCEL_DEPLOYMENT_ID) {
+      if (!workflowConfig.world && !process.env.WORKFLOW_TARGET_WORLD) {
+        process.env.WORKFLOW_TARGET_WORLD = 'local';
+        process.env.WORKFLOW_LOCAL_DATA_DIR = '.next/workflow-data';
+      }
+      const localPort = workflows?.local?.port ?? nextIntegration?.local?.port;
+      if (localPort !== undefined) {
+        process.env.PORT = localPort.toString();
+      }
+    } else if (!workflowConfig.world && !process.env.WORKFLOW_TARGET_WORLD) {
+      process.env.WORKFLOW_TARGET_WORLD = 'vercel';
+    }
+
+    const configuredWorldPackage =
+      workflowConfig.world &&
+      isResolvablePackageSpecifier(workflowConfig.world.id)
+        ? workflowConfig.world.id
+        : undefined;
     nextConfig.serverExternalPackages = [
       ...new Set([
         ...(nextConfig.serverExternalPackages || []),
+        ...(workflowConfig.build?.externalPackages || []),
+        ...(configuredWorldPackage ? [configuredWorldPackage] : []),
         // Keep the Vercel world and its native-prone dependencies external so
         // local builds do not try to parse @vercel/queue's keyring dependency
         // tree.
@@ -457,6 +473,33 @@ export function withWorkflow(
     if (!nextConfig.turbopack.rules) {
       nextConfig.turbopack.rules = {};
     }
+    if (runtimeConfigPath) {
+      const existingResolveAlias = isPlainObject(
+        nextConfig.turbopack.resolveAlias
+      )
+        ? nextConfig.turbopack.resolveAlias
+        : {};
+      nextConfig.turbopack.resolveAlias = {
+        ...existingResolveAlias,
+        '@workflow/config/runtime-binding': runtimeConfigPath,
+      };
+
+      const tracedConfigPath = relative(
+        process.cwd(),
+        runtimeConfigPath
+      ).replaceAll('\\', '/');
+      const existingTracingIncludes =
+        nextConfig.outputFileTracingIncludes || {};
+      nextConfig.outputFileTracingIncludes = {
+        ...existingTracingIncludes,
+        '/*': [
+          ...new Set([
+            ...(existingTracingIncludes['/*'] || []),
+            tracedConfigPath,
+          ]),
+        ],
+      };
+    }
     const existingRules = nextConfig.turbopack.rules as any;
     const nextVersion = resolveNextVersion(process.cwd());
     const supportsTurboCondition = semver.gte(nextVersion, 'v16.0.0');
@@ -484,8 +527,15 @@ export function withWorkflow(
           return new NextBuilder({
             watch: shouldWatch,
             // discover workflows from pages/app entries
-            dirs: ['pages', 'app', 'src/pages', 'src/app'],
-            projectRoot: nextConfig.outputFileTracingRoot,
+            dirs: workflowConfig.build?.dirs ?? [
+              'pages',
+              'app',
+              'src/pages',
+              'src/app',
+            ],
+            projectRoot: workflowConfig.build?.projectRoot
+              ? resolve(process.cwd(), workflowConfig.build.projectRoot)
+              : nextConfig.outputFileTracingRoot,
             moduleSpecifierRoot: process.cwd(),
             workingDir: process.cwd(),
             distDir,
@@ -495,6 +545,7 @@ export function withWorkflow(
             stepsBundlePath: '', // not used in base
             webhookBundlePath: '', // node used in base
             sourcemap: workflows?.sourcemap,
+            workflowConfig: loadedWorkflowConfig,
             suppressCreateWorkflowsBundleLogs: useDeferredBuilder,
             suppressCreateWorkflowsBundleWarnings: useDeferredBuilder,
             suppressCreateWebhookBundleLogs: useDeferredBuilder,
@@ -609,6 +660,25 @@ export function withWorkflow(
         test: /.*\.(mjs|cjs|cts|ts|tsx|js|jsx)$/,
         loader: loaderPath,
       });
+      if (runtimeConfigPath) {
+        webpackConfig.resolve ||= {};
+        const aliases = webpackConfig.resolve.alias;
+        if (Array.isArray(aliases)) {
+          webpackConfig.resolve.alias = [
+            ...aliases,
+            {
+              name: '@workflow/config/runtime-binding',
+              alias: runtimeConfigPath,
+              onlyModule: true,
+            },
+          ];
+        } else {
+          webpackConfig.resolve.alias = {
+            ...(aliases || {}),
+            '@workflow/config/runtime-binding': runtimeConfigPath,
+          };
+        }
+      }
 
       return existingWebpackModify
         ? (existingWebpackModify(...args) ?? webpackConfig)

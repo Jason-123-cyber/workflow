@@ -24,6 +24,7 @@ import {
 } from './module-specifier.js';
 import { createNodeModuleErrorPlugin } from './node-module-esbuild-plugin.js';
 import { createPseudoPackagePlugin } from './pseudo-package-esbuild-plugin.js';
+import { createRuntimeConfigPlugin } from './runtime-config-plugin.js';
 import { createSwcPlugin } from './swc-esbuild-plugin.js';
 import { detectWorkflowPatterns } from './transform-utils.js';
 import type { SourcemapMode, WorkflowConfig } from './types.js';
@@ -151,6 +152,16 @@ export abstract class BaseBuilder {
 
   protected get moduleSpecifierRoot(): string {
     return this.config.moduleSpecifierRoot || this.transformProjectRoot;
+  }
+
+  protected get queueNamespace(): string | undefined {
+    return this.config.workflowConfig?.config.queue?.namespace;
+  }
+
+  private get runtimeConfigPlugins(): esbuild.Plugin[] {
+    const workflowConfig = this.config.workflowConfig;
+    if (!workflowConfig?.found) return [];
+    return [createRuntimeConfigPlugin(workflowConfig.path)];
   }
 
   /**
@@ -1109,11 +1120,11 @@ export abstract class BaseBuilder {
         `${Date.now() - bundleStartTime}ms`
       );
 
-      if (this.config.workflowManifestPath) {
-        const resolvedPath = resolve(
-          process.cwd(),
-          this.config.workflowManifestPath
-        );
+      const workflowManifestPath =
+        this.config.workflowManifestPath ??
+        this.config.workflowConfig?.config.build?.manifest?.output;
+      if (workflowManifestPath) {
+        const resolvedPath = this.resolvePath(workflowManifestPath);
         let prefix = '';
 
         if (resolvedPath.endsWith('.cjs')) {
@@ -1182,8 +1193,9 @@ export abstract class BaseBuilder {
         }
       }
 
-      const workflowEntrypointOptionsCode =
-        createWorkflowEntrypointOptionsCode();
+      const workflowEntrypointOptionsCode = createWorkflowEntrypointOptionsCode(
+        this.queueNamespace
+      );
 
       const bundleFinal = async (interimBundle: string) => {
         const workflowBundleCode = interimBundle;
@@ -1241,6 +1253,7 @@ export const POST = workflowEntrypoint(workflowCode${workflowEntrypointOptionsCo
           keepNames: true,
           minify: false,
           external: ['@aws-sdk/credential-provider-web-identity'],
+          plugins: this.runtimeConfigPlugins,
         });
 
         this.logEsbuildMessages(
@@ -1373,7 +1386,9 @@ export const POST = workflowEntrypoint(workflowCode${workflowEntrypointOptionsCo
     // 3. Generate combined route file
     const stepsRelativePath = './' + basename(stepsOutfile).replace(/\\/g, '/');
     const escapedVMCode = workflowVMCode.replace(/[\\`$]/g, '\\$&');
-    const workflowEntrypointOptionsCode = createWorkflowEntrypointOptionsCode();
+    const workflowEntrypointOptionsCode = createWorkflowEntrypointOptionsCode(
+      this.queueNamespace
+    );
 
     const combinedFunctionCode = `// biome-ignore-all lint: generated file
 /* eslint-disable */
@@ -1422,6 +1437,7 @@ export const POST = workflowEntrypoint(workflowCode${workflowEntrypointOptionsCo
         minify: false,
         define: importMetaDefine,
         external: ['@aws-sdk/credential-provider-web-identity'],
+        plugins: this.runtimeConfigPlugins,
       });
       this.logEsbuildMessages(finalResult, 'combined bundle', true);
       this.logBaseBuilderInfo(
@@ -1446,8 +1462,9 @@ export const POST = workflowEntrypoint(workflowCode${workflowEntrypointOptionsCo
     // Create a custom bundleFinal for watch mode that uses workflowEntrypoint
     const combinedBundleFinal = async (interimBundleText: string) => {
       const escaped = interimBundleText.replace(/[\\`$]/g, '\\$&');
-      const workflowEntrypointOptionsCode =
-        createWorkflowEntrypointOptionsCode();
+      const workflowEntrypointOptionsCode = createWorkflowEntrypointOptionsCode(
+        this.queueNamespace
+      );
       const code = `// biome-ignore-all lint: generated file
 /* eslint-disable */
 import { __steps_registered } from '${stepsRelativePath}';
@@ -1701,6 +1718,7 @@ export const OPTIONS = handler;`;
       mainFields: ['module', 'main'],
       // Don't externalize anything - bundle everything including workflow packages
       external: [],
+      plugins: this.runtimeConfigPlugins,
     });
 
     this.logEsbuildMessages(result, 'webhook bundle creation');
@@ -1837,10 +1855,13 @@ export const OPTIONS = handler;`;
 
   /**
    * Whether the manifest should be exposed as a public HTTP route.
-   * Controlled by the `WORKFLOW_PUBLIC_MANIFEST` environment variable.
+   * workflow.config.ts takes precedence over WORKFLOW_PUBLIC_MANIFEST.
    */
   protected get shouldExposePublicManifest(): boolean {
-    return process.env.WORKFLOW_PUBLIC_MANIFEST === '1';
+    return (
+      this.config.workflowConfig?.config.build?.manifest?.public ??
+      process.env.WORKFLOW_PUBLIC_MANIFEST === '1'
+    );
   }
 
   /**
@@ -1865,12 +1886,14 @@ export const OPTIONS = handler;`;
 
   /**
    * Resolve the effective source map mode for a given call site. Precedence:
-   * explicit `sourcemap` config > `WORKFLOW_SOURCEMAP` env var > the call
-   * site's default. Returned value is passed directly to esbuild's
-   * `sourcemap` option.
+   * builder option > workflow.config.ts > WORKFLOW_SOURCEMAP > the call site's
+   * default. Returned value is passed directly to esbuild's `sourcemap`
+   * option.
    */
   protected resolveSourcemap(defaultMode: SourcemapMode): SourcemapMode {
     if (this.config.sourcemap !== undefined) return this.config.sourcemap;
+    const configMode = this.config.workflowConfig?.config.build?.sourcemap;
+    if (configMode !== undefined) return configMode;
     const envMode = parseSourcemapEnv(process.env.WORKFLOW_SOURCEMAP);
     if (envMode !== undefined) return envMode;
     return defaultMode;

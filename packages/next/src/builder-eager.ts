@@ -17,7 +17,7 @@ export async function getNextBuilderEager() {
 
   const {
     BaseBuilder: BaseBuilderClass,
-    WORKFLOW_QUEUE_TRIGGER,
+    createWorkflowQueueTrigger,
     // biome-ignore lint/security/noGlobalEval: Need to use eval here to avoid TypeScript from transpiling the import statement into `require()`
   } = (await eval(
     'import("@workflow/builders")'
@@ -424,7 +424,9 @@ export async function getNextBuilderEager() {
         version: '0',
         workflows: {
           maxDuration: 'max',
-          experimentalTriggers: [WORKFLOW_QUEUE_TRIGGER],
+          experimentalTriggers: [
+            createWorkflowQueueTrigger(this.queueNamespace),
+          ],
         },
       };
 

@@ -52,7 +52,7 @@ export async function getNextBuilderDeferred() {
   // should land as a complete feature set.
   const {
     BaseBuilder: BaseBuilderClass,
-    WORKFLOW_QUEUE_TRIGGER,
+    createWorkflowQueueTrigger,
     createWorkflowEntrypointOptionsCode,
     detectWorkflowPatterns,
     applySwcTransform,
@@ -650,8 +650,9 @@ export async function getNextBuilderDeferred() {
       const stepManifest =
         await this.createDeferredStepManifest(stepAndSerdeFiles);
       const escapedVMCode = workflowVMCode.replace(/[\\`$]/g, '\\$&');
-      const workflowEntrypointOptionsCode =
-        createWorkflowEntrypointOptionsCode();
+      const workflowEntrypointOptionsCode = createWorkflowEntrypointOptionsCode(
+        this.queueNamespace
+      );
       let routeCode: string;
 
       if (this.config.watch) {
@@ -1536,7 +1537,9 @@ export const POST = workflowEntrypoint(workflowCode${workflowEntrypointOptionsCo
         version: '0',
         workflows: {
           maxDuration: 'max',
-          experimentalTriggers: [WORKFLOW_QUEUE_TRIGGER],
+          experimentalTriggers: [
+            createWorkflowQueueTrigger(this.queueNamespace),
+          ],
         },
       };
 

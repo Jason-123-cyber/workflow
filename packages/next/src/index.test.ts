@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -131,18 +131,27 @@ describe('withWorkflow builder config', () => {
   });
 
   it('enables lazyDiscovery by default', async () => {
-    withWorkflow({});
+    const config = withWorkflow({});
+    await config('phase-production-build', {
+      defaultConfig: {},
+    });
     expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('1');
   });
 
   it('enables lazyDiscovery when explicitly set to true', async () => {
-    withWorkflow({}, { workflows: { lazyDiscovery: true } });
+    const config = withWorkflow({}, { workflows: { lazyDiscovery: true } });
+    await config('phase-production-build', {
+      defaultConfig: {},
+    });
     expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('1');
   });
 
   it('disables lazyDiscovery when explicitly set to false', async () => {
-    withWorkflow({}, { workflows: { lazyDiscovery: false } });
-    expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBeUndefined();
+    const config = withWorkflow({}, { workflows: { lazyDiscovery: false } });
+    await config('phase-production-build', {
+      defaultConfig: {},
+    });
+    expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('0');
   });
 
   it('configures diagnostics inside the default Next.js dist dir', async () => {
@@ -219,10 +228,10 @@ describe('withWorkflow builder config', () => {
     expect(webpackConfig?.externals).toEqual([{ react: 'commonjs react' }]);
   });
 
-  it('preserves an explicit lazyDiscovery disable override', () => {
+  it('lets an explicit call-site option override the legacy env var', async () => {
     process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = '0';
 
-    withWorkflow(
+    const config = withWorkflow(
       {},
       {
         workflows: {
@@ -230,23 +239,109 @@ describe('withWorkflow builder config', () => {
         },
       }
     );
-
-    expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('0');
-  });
-
-  it('treats an empty lazyDiscovery env override as unset', () => {
-    process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = '';
-
-    withWorkflow(
-      {},
-      {
-        workflows: {
-          lazyDiscovery: true,
-        },
-      }
-    );
+    await config('phase-production-build', {
+      defaultConfig: {},
+    });
 
     expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('1');
+  });
+
+  it('treats an empty lazyDiscovery env override as unset', async () => {
+    process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = '';
+
+    const config = withWorkflow(
+      {},
+      {
+        workflows: {
+          lazyDiscovery: true,
+        },
+      }
+    );
+    await config('phase-production-build', {
+      defaultConfig: {},
+    });
+
+    expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('1');
+  });
+
+  it('applies workflow.config.ts to the Next builder and runtime binding', async () => {
+    const projectDir = mkdtempSync(join(realTmpDir, 'workflow-next-config-'));
+    process.chdir(projectDir);
+    mkdirSync(join(projectDir, '.git'));
+    writeFile(
+      join(projectDir, 'workflow.config.ts'),
+      `const world = {
+  type: 'world-provider',
+  id: 'configured-world',
+  create: () => {
+    throw new Error('World provider factory must not run during builds');
+  }
+};
+
+export default {
+  world,
+  build: {
+    dirs: ['jobs'],
+    projectRoot: '../repo-root',
+    externalPackages: ['configured-external'],
+    sourcemap: false,
+    manifest: { public: true, output: 'custom-manifest.json' }
+  },
+  queue: { namespace: 'myapp' },
+  integration: {
+    type: 'next',
+    lazyDiscovery: false,
+    local: { port: 4321 }
+  }
+};`
+    );
+    process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = '1';
+
+    try {
+      const config = withWorkflow({});
+      const resolvedConfig = await config('phase-production-build', {
+        defaultConfig: {},
+      });
+
+      expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('0');
+      expect(process.env.PORT).toBe('4321');
+      expect(process.env.WORKFLOW_TARGET_WORLD).toBeUndefined();
+      expect(builderConfigs[0]).toMatchObject({
+        dirs: ['jobs'],
+        projectRoot: resolve(projectDir, '../repo-root'),
+        workflowConfig: {
+          found: true,
+          path: join(projectDir, 'workflow.config.ts'),
+          config: {
+            build: {
+              sourcemap: false,
+              manifest: {
+                public: true,
+                output: 'custom-manifest.json',
+              },
+            },
+            queue: { namespace: 'myapp' },
+          },
+        },
+      });
+      expect(builderConfigs[0]?.externalPackages).toContain(
+        'configured-external'
+      );
+      expect(resolvedConfig.serverExternalPackages).toContain(
+        'configured-world'
+      );
+      expect(
+        (resolvedConfig.turbopack?.resolveAlias as Record<string, string>)[
+          '@workflow/config/runtime-binding'
+        ]
+      ).toBe(join(projectDir, 'workflow.config.ts'));
+      expect(resolvedConfig.outputFileTracingIncludes?.['/*']).toContain(
+        'workflow.config.ts'
+      );
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it('removes workflow packages from serverExternalPackages for this build', async () => {

@@ -1,17 +1,15 @@
-const QUEUE_NAMESPACE_PATTERN = /^[a-z][a-z0-9]*$/;
+import { QueueNamespaceSchema } from '@workflow/world';
 
-function resolveQueueNamespace(namespace?: string): string | undefined {
-  return namespace ?? process.env.WORKFLOW_QUEUE_NAMESPACE ?? undefined;
+function resolveQueueNamespace(namespace: string | undefined) {
+  return namespace ?? process.env.WORKFLOW_QUEUE_NAMESPACE;
 }
 
-function getQueueTopicPrefix(kind: 'workflow' | 'step', namespace?: string) {
+function getQueueTopicPrefix(
+  kind: 'workflow' | 'step',
+  namespace: string | undefined
+) {
   if (namespace !== undefined) {
-    if (!QUEUE_NAMESPACE_PATTERN.test(namespace)) {
-      throw new Error(
-        `Invalid queue namespace "${namespace}": must be lowercase alphanumeric, starting with a letter`
-      );
-    }
-
+    QueueNamespaceSchema.parse(namespace);
     return `__${namespace}_wkf_${kind}_`;
   }
 
@@ -29,18 +27,18 @@ function getQueueTopicPrefix(kind: 'workflow' | 'step', namespace?: string) {
  *
  * @example
  * // default: topic = '__wkf_workflow_*'
- * createWorkflowQueueTrigger()
+ * createWorkflowQueueTrigger(undefined)
  *
  * @example
  * // namespaced: topic = '__custom_wkf_workflow_*'
- * createWorkflowQueueTrigger({ namespace: 'custom' })
+ * createWorkflowQueueTrigger('custom')
  */
-export function createWorkflowQueueTrigger(options?: { namespace?: string }) {
-  const namespace = resolveQueueNamespace(options?.namespace);
+export function createWorkflowQueueTrigger(namespace: string | undefined) {
+  const resolvedNamespace = resolveQueueNamespace(namespace);
 
   return {
     type: 'queue/v2beta' as const,
-    topic: `${getQueueTopicPrefix('workflow', namespace)}*`,
+    topic: `${getQueueTopicPrefix('workflow', resolvedNamespace)}*`,
     consumer: 'default',
     retryAfterSeconds: 5, // Delay between retries (default: 60)
     initialDelaySeconds: 0, // Initial delay before first delivery (default: 0)
@@ -52,22 +50,22 @@ export function createWorkflowQueueTrigger(options?: { namespace?: string }) {
  * calls. The namespace is resolved while building so generated route files do
  * not need `WORKFLOW_QUEUE_NAMESPACE` at runtime.
  */
-export function createWorkflowEntrypointOptionsCode(options?: {
-  namespace?: string;
-}) {
-  const namespace = resolveQueueNamespace(options?.namespace);
+export function createWorkflowEntrypointOptionsCode(
+  namespace: string | undefined
+) {
+  const resolvedNamespace = resolveQueueNamespace(namespace);
 
-  if (!namespace) {
+  if (!resolvedNamespace) {
     return '';
   }
 
   // Reuse prefix construction for namespace validation.
-  getQueueTopicPrefix('workflow', namespace);
+  getQueueTopicPrefix('workflow', resolvedNamespace);
 
-  return `, { namespace: ${JSON.stringify(namespace)} }`;
+  return `, { namespace: ${JSON.stringify(resolvedNamespace)} }`;
 }
 
 /**
  * Default queue trigger (no namespace). Backward compatible.
  */
-export const WORKFLOW_QUEUE_TRIGGER = createWorkflowQueueTrigger();
+export const WORKFLOW_QUEUE_TRIGGER = createWorkflowQueueTrigger(undefined);
