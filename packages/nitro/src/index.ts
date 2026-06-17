@@ -27,17 +27,15 @@ function isNitroV2(nitro: Nitro): boolean {
   return !nitro.routing;
 }
 
-export default {
+const nitroModule = {
   name: 'workflow/nitro',
-  async setup(nitro: Nitro) {
+  async setup(nitro: Nitro): Promise<LocalBuilder | undefined> {
     const loadedWorkflowConfig = await loadWorkflowConfig({
       cwd: nitro.options.rootDir,
       integration: 'nitro',
     });
     const workflowConfig = loadedWorkflowConfig.config;
-    const runtimeConfigPath = loadedWorkflowConfig.found
-      ? loadedWorkflowConfig.path
-      : undefined;
+    const runtimeConfigPath = loadedWorkflowConfig.path;
     const nitroIntegration =
       workflowConfig.integration?.type === 'nitro'
         ? workflowConfig.integration
@@ -49,7 +47,6 @@ export default {
         nitro.options.workflow?.typescriptPlugin ??
         nitroIntegration?.typescriptPlugin,
       runtime: nitro.options.workflow?.runtime ?? nitroIntegration?.runtime,
-      sourcemap: nitro.options.workflow?.sourcemap,
     };
     const publicManifest =
       process.env.WORKFLOW_PUBLIC_MANIFEST === undefined
@@ -215,11 +212,11 @@ export default {
     // vercel preset. This lets workflow handlers use nitro features
     // (storage, database, runtime config, virtual imports, etc.).
     if (!useLegacyVercelBuild) {
-      const builder = new LocalBuilder(nitro, loadedWorkflowConfig);
+      const localBuilder = new LocalBuilder(nitro, loadedWorkflowConfig);
       let isInitialBuild = true;
 
       nitro.hooks.hook('build:before', async () => {
-        await builder.build();
+        await localBuilder.build();
 
         // For prod: write the manifest handler file with inlined content
         // now that the builder has generated the manifest. Rollup will
@@ -237,7 +234,7 @@ export default {
             return;
           }
           try {
-            await builder.build();
+            await localBuilder.build();
           } catch (error) {
             // During dev, files may be added/removed while the builder
             // is rebuilding (e.g., during test cleanup). Log the error
@@ -255,7 +252,8 @@ export default {
       addVirtualHandler(
         nitro,
         '/.well-known/workflow/v1/webhook/:token',
-        'workflow/webhook.mjs'
+        'workflow/webhook.mjs',
+        runtimeConfigPath !== undefined
       );
 
       // V2: single combined handler for both workflow and step execution.
@@ -264,7 +262,8 @@ export default {
       addVirtualHandler(
         nitro,
         '/.well-known/workflow/v1/flow',
-        'workflow/workflows.mjs'
+        'workflow/workflows.mjs',
+        runtimeConfigPath !== undefined
       );
 
       // Nitro v3+ Vercel deploy: configure function rules for the combined
@@ -326,7 +325,20 @@ export default {
         }
         addManifestHandler(nitro);
       }
+
+      return localBuilder;
     }
+  },
+};
+
+export function setupNitro(nitro: Nitro): Promise<LocalBuilder | undefined> {
+  return nitroModule.setup(nitro);
+}
+
+export default {
+  name: nitroModule.name,
+  async setup(nitro: Nitro) {
+    await nitroModule.setup(nitro);
   },
 } satisfies NitroModule;
 
@@ -398,7 +410,12 @@ function addDashboardHandler(nitro: Nitro) {
   }
 }
 
-function addVirtualHandler(nitro: Nitro, route: string, buildPath: string) {
+function addVirtualHandler(
+  nitro: Nitro,
+  route: string,
+  buildPath: string,
+  hasRuntimeConfig: boolean
+) {
   nitro.options.handlers.push({
     route,
     handler: `#${buildPath}`,
@@ -408,6 +425,13 @@ function addVirtualHandler(nitro: Nitro, route: string, buildPath: string) {
   );
 
   if (nitro.options.dev) {
+    const runtimeConfigSetup = hasRuntimeConfig
+      ? `
+      import workflowConfig from "@workflow/config/runtime-binding";
+      globalThis[Symbol.for("@workflow/config/runtime")] = workflowConfig;
+    `
+      : '';
+
     // Dev mode: load generated workflow bundles from disk at request time.
     // This keeps `.nitro/workflow/*.mjs` out of Nitro's own bundle graph,
     // which avoids rebuild loops and stale dependency graphs during HMR.
@@ -417,6 +441,7 @@ function addVirtualHandler(nitro: Nitro, route: string, buildPath: string) {
       import { fromWebHandler } from "h3";
       import { statSync } from "node:fs";
       import { pathToFileURL } from "node:url";
+      ${runtimeConfigSetup}
 
       const handlerPath = ${handlerImportPath};
       let currentVersion = "";
@@ -440,6 +465,7 @@ function addVirtualHandler(nitro: Nitro, route: string, buildPath: string) {
       nitro.options.virtual[`#${buildPath}`] = /* js */ `
       import { statSync } from "node:fs";
       import { pathToFileURL } from "node:url";
+      ${runtimeConfigSetup}
 
       const handlerPath = ${handlerImportPath};
       let currentVersion = "";

@@ -1,12 +1,22 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getNextBuilderDeferred } from './builder-deferred.js';
+import { getNextBuilderEager } from './builder-eager.js';
 
 const tempDirs: string[] = [];
 // biome-ignore lint/security/noGlobalEval: The test preserves the builder's dynamic import shim while stubbing one import.
 const originalEval = globalThis.eval;
+
+beforeEach(() => {
+  vi.stubGlobal('eval', (source: string) => {
+    if (source === 'import("@workflow/builders")') {
+      return import('@workflow/builders');
+    }
+    return originalEval(source);
+  });
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -16,16 +26,37 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe('NextDeferredBuilder', () => {
+describe('Next builders', () => {
+  it.each([
+    ['eager', getNextBuilderEager],
+    ['deferred', getNextBuilderDeferred],
+  ])('uses configured directories directly in %s mode', async (_, getBuilder) => {
+    const workingDir = await mkdtemp(join(tmpdir(), 'workflow-next-dirs-'));
+    tempDirs.push(workingDir);
+    const workflowFile = join(workingDir, 'workflows/example.ts');
+    await mkdir(join(workingDir, 'workflows'), { recursive: true });
+    await writeFile(workflowFile, 'export async function example() {}');
+
+    const Builder = await getBuilder();
+    const builder = new Builder({
+      dirs: ['workflows'],
+      workingDir,
+      buildTarget: 'next',
+      workflowsBundlePath: '',
+      stepsBundlePath: '',
+      webhookBundlePath: '',
+      workflowConfig: {
+        path: join(workingDir, 'workflow.config.ts'),
+        config: { build: { dirs: ['workflows'] } },
+      },
+    }) as any;
+
+    await expect(builder.getInputFiles()).resolves.toEqual([workflowFile]);
+  });
+
   it('lets Next bundle step registrations from source imports', async () => {
     const workingDir = await mkdtemp(join(tmpdir(), 'workflow-next-deferred-'));
     tempDirs.push(workingDir);
-    vi.stubGlobal('eval', (source: string) => {
-      if (source === 'import("@workflow/builders")') {
-        return import('@workflow/builders');
-      }
-      return originalEval(source);
-    });
 
     const NextDeferredBuilder = await getNextBuilderDeferred();
     const builder = new NextDeferredBuilder({
@@ -95,12 +126,6 @@ describe('NextDeferredBuilder', () => {
   it('loads workflow code from disk for dev deferred flow routes', async () => {
     const workingDir = await mkdtemp(join(tmpdir(), 'workflow-next-deferred-'));
     tempDirs.push(workingDir);
-    vi.stubGlobal('eval', (source: string) => {
-      if (source === 'import("@workflow/builders")') {
-        return import('@workflow/builders');
-      }
-      return originalEval(source);
-    });
 
     const NextDeferredBuilder = await getNextBuilderDeferred();
     const builder = new NextDeferredBuilder({
@@ -149,12 +174,6 @@ describe('NextDeferredBuilder', () => {
   it('imports workspace package step sources from dist output outside packages directories', async () => {
     const workingDir = await mkdtemp(join(tmpdir(), 'workflow-next-deferred-'));
     tempDirs.push(workingDir);
-    vi.stubGlobal('eval', (source: string) => {
-      if (source === 'import("@workflow/builders")') {
-        return import('@workflow/builders');
-      }
-      return originalEval(source);
-    });
 
     const NextDeferredBuilder = await getNextBuilderDeferred();
     const builder = new NextDeferredBuilder({

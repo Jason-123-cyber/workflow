@@ -1,19 +1,7 @@
-import { QueueNamespaceSchema } from '@workflow/world';
+import { getQueueTopicPrefix } from '@workflow/world';
 
 function resolveQueueNamespace(namespace: string | undefined) {
   return namespace ?? process.env.WORKFLOW_QUEUE_NAMESPACE;
-}
-
-function getQueueTopicPrefix(
-  kind: 'workflow' | 'step',
-  namespace: string | undefined
-) {
-  if (namespace !== undefined) {
-    QueueNamespaceSchema.parse(namespace);
-    return `__${namespace}_wkf_${kind}_`;
-  }
-
-  return `__wkf_${kind}_`;
 }
 
 /**
@@ -27,13 +15,13 @@ function getQueueTopicPrefix(
  *
  * @example
  * // default: topic = '__wkf_workflow_*'
- * createWorkflowQueueTrigger(undefined)
+ * createWorkflowQueueTrigger()
  *
  * @example
  * // namespaced: topic = '__custom_wkf_workflow_*'
  * createWorkflowQueueTrigger('custom')
  */
-export function createWorkflowQueueTrigger(namespace: string | undefined) {
+export function createWorkflowQueueTrigger(namespace?: string) {
   const resolvedNamespace = resolveQueueNamespace(namespace);
 
   return {
@@ -50,9 +38,7 @@ export function createWorkflowQueueTrigger(namespace: string | undefined) {
  * calls. The namespace is resolved while building so generated route files do
  * not need `WORKFLOW_QUEUE_NAMESPACE` at runtime.
  */
-export function createWorkflowEntrypointOptionsCode(
-  namespace: string | undefined
-) {
+export function createWorkflowEntrypointOptionsCode(namespace?: string) {
   const resolvedNamespace = resolveQueueNamespace(namespace);
 
   if (!resolvedNamespace) {
@@ -68,4 +54,4 @@ export function createWorkflowEntrypointOptionsCode(
 /**
  * Default queue trigger (no namespace). Backward compatible.
  */
-export const WORKFLOW_QUEUE_TRIGGER = createWorkflowQueueTrigger(undefined);
+export const WORKFLOW_QUEUE_TRIGGER = createWorkflowQueueTrigger();

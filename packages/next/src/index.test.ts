@@ -69,6 +69,7 @@ describe('withWorkflow builder config', () => {
   const originalEnv = {
     PORT: process.env.PORT,
     VERCEL_DEPLOYMENT_ID: process.env.VERCEL_DEPLOYMENT_ID,
+    WORKFLOW_LOCAL_BASE_URL: process.env.WORKFLOW_LOCAL_BASE_URL,
     WORKFLOW_LOCAL_DATA_DIR: process.env.WORKFLOW_LOCAL_DATA_DIR,
     WORKFLOW_NEXT_LAZY_DISCOVERY: process.env.WORKFLOW_NEXT_LAZY_DISCOVERY,
     WORKFLOW_NEXT_PRIVATE_BUILT: process.env.WORKFLOW_NEXT_PRIVATE_BUILT,
@@ -87,6 +88,7 @@ describe('withWorkflow builder config', () => {
 
     delete process.env.PORT;
     delete process.env.VERCEL_DEPLOYMENT_ID;
+    delete process.env.WORKFLOW_LOCAL_BASE_URL;
     delete process.env.WORKFLOW_LOCAL_DATA_DIR;
     delete process.env.WORKFLOW_NEXT_LAZY_DISCOVERY;
     delete process.env.WORKFLOW_NEXT_PRIVATE_BUILT;
@@ -228,14 +230,20 @@ describe('withWorkflow builder config', () => {
     expect(webpackConfig?.externals).toEqual([{ react: 'commonjs react' }]);
   });
 
-  it('lets an explicit call-site option override the legacy env var', async () => {
+  it('lets explicit call-site options override environment variables', async () => {
     process.env.WORKFLOW_NEXT_LAZY_DISCOVERY = '0';
+    process.env.WORKFLOW_LOCAL_BASE_URL = 'http://localhost:9876';
+    let observedBaseUrl: string | undefined;
 
     const config = withWorkflow(
-      {},
+      async () => {
+        observedBaseUrl = process.env.WORKFLOW_LOCAL_BASE_URL;
+        return {};
+      },
       {
         workflows: {
           lazyDiscovery: true,
+          local: { port: 4321 },
         },
       }
     );
@@ -244,22 +252,8 @@ describe('withWorkflow builder config', () => {
     });
 
     expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('1');
-  });
-
-  it('lets an explicit local port override PORT', async () => {
-    process.env.PORT = '3000';
-
-    const config = withWorkflow(
-      {},
-      {
-        workflows: {
-          local: { port: 4000 },
-        },
-      }
-    );
-    await config('phase-production-build', { defaultConfig: {} });
-
-    expect(process.env.PORT).toBe('4000');
+    expect(process.env.WORKFLOW_LOCAL_BASE_URL).toBe('http://localhost:4321');
+    expect(observedBaseUrl).toBe('http://localhost:4321');
   });
 
   it('treats an empty lazyDiscovery env override as unset', async () => {
@@ -283,10 +277,10 @@ describe('withWorkflow builder config', () => {
   it('prefers environment variables over workflow.config.ts', async () => {
     const projectDir = mkdtempSync(join(realTmpDir, 'workflow-next-config-'));
     process.chdir(projectDir);
-    mkdirSync(join(projectDir, '.git'));
     writeFile(
       join(projectDir, 'workflow.config.ts'),
       `export default {
+  build: { projectRoot: '../configured-root' },
   integration: {
     type: 'next',
     lazyDiscovery: false,
@@ -298,11 +292,12 @@ describe('withWorkflow builder config', () => {
     process.env.PORT = '9876';
 
     try {
-      const config = withWorkflow({});
+      const config = withWorkflow({ outputFileTracingRoot: '/explicit-root' });
       await config('phase-production-build', { defaultConfig: {} });
 
       expect(process.env.WORKFLOW_NEXT_LAZY_DISCOVERY).toBe('1');
       expect(process.env.PORT).toBe('9876');
+      expect(builderConfigs[0]?.projectRoot).toBe('/explicit-root');
     } finally {
       process.chdir(originalCwd);
       rmSync(projectDir, { recursive: true, force: true });
@@ -312,7 +307,6 @@ describe('withWorkflow builder config', () => {
   it('applies workflow.config.ts to the Next builder and runtime binding', async () => {
     const projectDir = mkdtempSync(join(realTmpDir, 'workflow-next-config-'));
     process.chdir(projectDir);
-    mkdirSync(join(projectDir, '.git'));
     writeFile(
       join(projectDir, 'workflow.config.ts'),
       `const world = {
@@ -353,7 +347,6 @@ export default {
         dirs: ['jobs'],
         projectRoot: resolve(projectDir, '../repo-root'),
         workflowConfig: {
-          found: true,
           path: join(projectDir, 'workflow.config.ts'),
           config: {
             build: {
@@ -376,9 +369,6 @@ export default {
         ]
       ).toBe(
         `./${relative(turbopackRoot, join(projectDir, 'workflow.config.ts'))}`
-      );
-      expect(resolvedConfig.outputFileTracingIncludes?.['/*']).toContain(
-        'workflow.config.ts'
       );
     } finally {
       process.chdir(originalCwd);

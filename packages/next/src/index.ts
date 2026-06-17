@@ -34,16 +34,6 @@ const workflowSerdeComputedPropertyPattern =
 const PSEUDO_EXTERNAL_PACKAGES = new Set(['server-only', 'client-only']);
 const warnedAutoRemovedServerExternalPackages = new Set<string>();
 
-async function loadWorkflowConfigForNext() {
-  const { loadWorkflowConfig } = require('@workflow/config/load') as {
-    loadWorkflowConfig: WorkflowConfigLoader;
-  };
-  return loadWorkflowConfig({
-    cwd: process.cwd(),
-    integration: 'next',
-  });
-}
-
 interface WorkflowPatternMatch {
   hasUseWorkflow: boolean;
   hasUseStep: boolean;
@@ -359,21 +349,15 @@ export function withWorkflow(
     const loaderPath = require.resolve('./loader');
     let runDeferredBuildFromCallback: (() => Promise<void>) | undefined;
 
-    let nextConfig: NextConfig;
-
-    if (typeof nextConfigOrFn === 'function') {
-      nextConfig = await nextConfigOrFn(phase, ctx);
-    } else {
-      nextConfig = nextConfigOrFn;
-    }
-    // shallow clone to avoid read-only on top-level
-    nextConfig = Object.assign({}, nextConfig);
-
-    const loadedWorkflowConfig = await loadWorkflowConfigForNext();
+    const { loadWorkflowConfig } = require('@workflow/config/load') as {
+      loadWorkflowConfig: WorkflowConfigLoader;
+    };
+    const loadedWorkflowConfig = await loadWorkflowConfig({
+      cwd: process.cwd(),
+      integration: 'next',
+    });
     const workflowConfig = loadedWorkflowConfig.config;
-    const runtimeConfigPath = loadedWorkflowConfig.found
-      ? loadedWorkflowConfig.path
-      : undefined;
+    const runtimeConfigPath = loadedWorkflowConfig.path;
     const nextIntegration =
       workflowConfig.integration?.type === 'next'
         ? workflowConfig.integration
@@ -394,6 +378,7 @@ export function withWorkflow(
       }
       if (workflows?.local?.port !== undefined) {
         process.env.PORT = workflows.local.port.toString();
+        process.env.WORKFLOW_LOCAL_BASE_URL = `http://localhost:${workflows.local.port}`;
       } else if (
         process.env.PORT === undefined &&
         nextIntegration?.local?.port !== undefined
@@ -403,6 +388,13 @@ export function withWorkflow(
     } else if (!workflowConfig.world && !process.env.WORKFLOW_TARGET_WORLD) {
       process.env.WORKFLOW_TARGET_WORLD = 'vercel';
     }
+
+    let nextConfig =
+      typeof nextConfigOrFn === 'function'
+        ? await nextConfigOrFn(phase, ctx)
+        : nextConfigOrFn;
+    // shallow clone to avoid read-only on top-level
+    nextConfig = Object.assign({}, nextConfig);
 
     nextConfig.serverExternalPackages = [
       ...new Set([
@@ -487,22 +479,6 @@ export function withWorkflow(
           ? runtimeConfigRequest
           : `./${runtimeConfigRequest}`,
       };
-
-      const tracedConfigPath = relative(
-        process.cwd(),
-        runtimeConfigPath
-      ).replaceAll('\\', '/');
-      const existingTracingIncludes =
-        nextConfig.outputFileTracingIncludes || {};
-      nextConfig.outputFileTracingIncludes = {
-        ...existingTracingIncludes,
-        '/*': [
-          ...new Set([
-            ...(existingTracingIncludes['/*'] || []),
-            tracedConfigPath,
-          ]),
-        ],
-      };
     }
     const existingRules = nextConfig.turbopack.rules as any;
     const nextVersion = resolveNextVersion(process.cwd());
@@ -537,9 +513,11 @@ export function withWorkflow(
               'src/pages',
               'src/app',
             ],
-            projectRoot: workflowConfig.build?.projectRoot
-              ? resolve(process.cwd(), workflowConfig.build.projectRoot)
-              : nextConfig.outputFileTracingRoot,
+            projectRoot:
+              nextConfig.outputFileTracingRoot ??
+              (workflowConfig.build?.projectRoot
+                ? resolve(process.cwd(), workflowConfig.build.projectRoot)
+                : undefined),
             moduleSpecifierRoot: process.cwd(),
             workingDir: process.cwd(),
             distDir,

@@ -1490,6 +1490,10 @@ export const POST = workflowEntrypoint(workflowCode${workflowEntrypointOptionsCo
     }
 
     protected async getInputFiles(): Promise<string[]> {
+      if (this.config.workflowConfig?.config.build?.dirs) {
+        return super.getInputFiles();
+      }
+
       // Read Next.js's app-paths-manifest.json from a previous build to
       // determine which files are actual route entrypoints. This avoids
       // predicting Next.js conventions with regexes and instead reads

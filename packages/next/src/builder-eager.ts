@@ -393,6 +393,8 @@ export async function getNextBuilderEager() {
 
     protected async getInputFiles(): Promise<string[]> {
       const inputFiles = await super.getInputFiles();
+      if (this.config.workflowConfig?.config.build?.dirs) return inputFiles;
+
       return inputFiles.filter((item) => {
         // Match App Router entrypoints: route.ts, page.ts, layout.ts in app/ or src/app/ directories
         // Matches: /app/page.ts, /app/dashboard/page.ts, /src/app/route.ts, etc.
