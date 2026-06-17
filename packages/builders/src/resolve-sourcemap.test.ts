@@ -84,10 +84,10 @@ describe('resolveSourcemap', () => {
     );
   });
 
-  it('prefers workflow.config.ts over environment variable', () => {
+  it('prefers environment variable over workflow.config.ts', () => {
     process.env.WORKFLOW_SOURCEMAP = 'inline';
     expect(createBuilder(undefined, false).callResolveSourcemap(true)).toBe(
-      false
+      'inline'
     );
   });
 

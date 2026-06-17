@@ -62,7 +62,7 @@ Build and Next.js integration settings can be placed in
 [`workflow.config.ts`](/docs/foundations/configuration).
 
 `withWorkflow` also accepts an optional second argument. Values passed there
-take precedence over `workflow.config.ts`.
+take precedence over environment variables and `workflow.config.ts`.
 
 ```typescript title="next.config.ts" lineNumbers
 import type { NextConfig } from "next";
@@ -108,7 +108,7 @@ Setting `sourcemap` explicitly affects **all** generated bundles (steps, workflo
 The option can also be set via the `WORKFLOW_SOURCEMAP` environment variable,
 which accepts the same values plus `'0'` / `'1'` as aliases for `false` /
 `true`. Precedence is: explicit `withWorkflow` option >
-`workflow.config.ts` > `WORKFLOW_SOURCEMAP` > per-bundle default.
+`WORKFLOW_SOURCEMAP` > `workflow.config.ts` > per-bundle default.
 
 <Callout type="info">
 The `workflows.local` options only affect local development. When deployed to Vercel, the runtime ignores `local` settings and uses the Vercel world automatically.
