@@ -1,5 +1,20 @@
 # @workflow/builders
 
+## 4.1.1
+
+### Patch Changes
+
+- [#2455](https://github.com/vercel/workflow/pull/2455) [`578f7e1`](https://github.com/vercel/workflow/commit/578f7e1f1b03d2a7eb39591aa457931b960755cb) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Fix Next.js lazy discovery workflow IDs for monorepo workspace packages by resolving module specifiers relative to the app package instead of the tracing root.
+
+- [#2324](https://github.com/vercel/workflow/pull/2324) [`4c49cc8`](https://github.com/vercel/workflow/commit/4c49cc88957bedcc59f16f2bb4b905a0056d5eff) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Decode escaped workflowCode template literals before graph extraction so unicode-escape identifiers parse correctly.
+
+- [#2427](https://github.com/vercel/workflow/pull/2427) [`8d1f299`](https://github.com/vercel/workflow/commit/8d1f2993cb8e266e6b688d461160d847011b8393) Thanks [@ijjk](https://github.com/ijjk)! - Add `.swc` to the builder's default gitignore handling.
+
+- Updated dependencies [[`f2ad726`](https://github.com/vercel/workflow/commit/f2ad7261b14dd64085c80584b9d472019414b512), [`20a6d73`](https://github.com/vercel/workflow/commit/20a6d73a0aa03b4b2f7318d97e12a5e7818c67d9), [`015452a`](https://github.com/vercel/workflow/commit/015452a70c52044635d24a134b7b984b6d2e1142), [`db8a2c4`](https://github.com/vercel/workflow/commit/db8a2c49820530f7a331bb4c1f0a803e03547831), [`170ea96`](https://github.com/vercel/workflow/commit/170ea9659a2b9c26e611bab8bb5131f9c6cdc14d), [`b357137`](https://github.com/vercel/workflow/commit/b3571378b8ce9964843d76ce1c5b6e5e2c4cf5da)]:
+  - @workflow/core@4.6.0
+  - @workflow/swc-plugin@4.1.2
+  - @workflow/errors@4.1.4
+
 ## 4.1.0
 
 ### Minor Changes

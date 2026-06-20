@@ -1,5 +1,14 @@
 # @workflow/ai
 
+## 4.1.3
+
+### Patch Changes
+
+- [#2440](https://github.com/vercel/workflow/pull/2440) [`80ccca0`](https://github.com/vercel/workflow/commit/80ccca023d39c4fb735e72fb7446e95bd6b9eb14) Thanks [@pranaygp](https://github.com/pranaygp)! - Re-release `@workflow/ai` on the 4.x stable line. Versions 5.0.0, 6.0.0, and 7.0.0 were published to the `latest` dist-tag in error: a changesets peer-dependency misconfiguration force-bumped a full major on every `workflow` minor release, even though `@workflow/ai` had no breaking changes. Those versions are deprecated — `^4` remains the correct stable range.
+
+- Updated dependencies [[`f2ad726`](https://github.com/vercel/workflow/commit/f2ad7261b14dd64085c80584b9d472019414b512)]:
+  - workflow@4.6.0
+
 ## 7.0.0
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @workflow/web-shared
 
+## 4.1.12
+
+### Patch Changes
+
+- [#2328](https://github.com/vercel/workflow/pull/2328) [`161431b`](https://github.com/vercel/workflow/commit/161431b1d08a46767b76ae9389011ae24d4d2ad7) Thanks [@mitul-s](https://github.com/mitul-s)! - Show relative time display card on date hover
+
+- [#2474](https://github.com/vercel/workflow/pull/2474) [`0dd2db8`](https://github.com/vercel/workflow/commit/0dd2db881001687b90c0128b3e723060dbe4ab4c) Thanks [@mitul-s](https://github.com/mitul-s)! - Yse solid gray for queued trace segment
+
+- Updated dependencies [[`f2ad726`](https://github.com/vercel/workflow/commit/f2ad7261b14dd64085c80584b9d472019414b512), [`20a6d73`](https://github.com/vercel/workflow/commit/20a6d73a0aa03b4b2f7318d97e12a5e7818c67d9), [`015452a`](https://github.com/vercel/workflow/commit/015452a70c52044635d24a134b7b984b6d2e1142), [`f9119d4`](https://github.com/vercel/workflow/commit/f9119d4b6a39f93df8d97c338c62eb0b6bccad8d), [`db8a2c4`](https://github.com/vercel/workflow/commit/db8a2c49820530f7a331bb4c1f0a803e03547831), [`170ea96`](https://github.com/vercel/workflow/commit/170ea9659a2b9c26e611bab8bb5131f9c6cdc14d)]:
+  - @workflow/core@4.6.0
+  - @workflow/world@4.2.1
+
 ## 4.1.11
 
 ### Patch Changes

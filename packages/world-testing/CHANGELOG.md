@@ -1,5 +1,17 @@
 # @workflow/world-testing
 
+## 4.1.11
+
+### Patch Changes
+
+- [#2462](https://github.com/vercel/workflow/pull/2462) [`e377108`](https://github.com/vercel/workflow/commit/e3771083e04687e58dd689ec92e0f7a98cce1f97) Thanks [@pranaygp](https://github.com/pranaygp)! - Bump the `hono` dependency to 4.12.25 to resolve CVE-2026-54290 (GHSA-88fw-hqm2-52qc, CORS middleware reflects any origin with credentials when origin defaults to the wildcard).
+
+- Updated dependencies [[`f2ad726`](https://github.com/vercel/workflow/commit/f2ad7261b14dd64085c80584b9d472019414b512), [`3bb5de1`](https://github.com/vercel/workflow/commit/3bb5de1669ae79e9536c93a5a46b7304a3c90ce4), [`20a6d73`](https://github.com/vercel/workflow/commit/20a6d73a0aa03b4b2f7318d97e12a5e7818c67d9), [`015452a`](https://github.com/vercel/workflow/commit/015452a70c52044635d24a134b7b984b6d2e1142), [`f9119d4`](https://github.com/vercel/workflow/commit/f9119d4b6a39f93df8d97c338c62eb0b6bccad8d), [`db8a2c4`](https://github.com/vercel/workflow/commit/db8a2c49820530f7a331bb4c1f0a803e03547831), [`170ea96`](https://github.com/vercel/workflow/commit/170ea9659a2b9c26e611bab8bb5131f9c6cdc14d)]:
+  - @workflow/core@4.6.0
+  - workflow@4.6.0
+  - @workflow/cli@4.3.0
+  - @workflow/world@4.2.1
+
 ## 4.1.10
 
 ### Patch Changes

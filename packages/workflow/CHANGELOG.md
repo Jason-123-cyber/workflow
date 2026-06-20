@@ -1,5 +1,26 @@
 # workflow
 
+## 4.6.0
+
+### Minor Changes
+
+- [#1853](https://github.com/vercel/workflow/pull/1853) [`f2ad726`](https://github.com/vercel/workflow/commit/f2ad7261b14dd64085c80584b9d472019414b512) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Add wire-level framing for byte streams (`type: 'bytes'`) so consumers can identify chunk boundaries — a prerequisite for transparent auto-reconnect.
+
+### Patch Changes
+
+- Updated dependencies [[`c4ed84f`](https://github.com/vercel/workflow/commit/c4ed84f1630efa50d20640bc942623c3e648ef21), [`f2ad726`](https://github.com/vercel/workflow/commit/f2ad7261b14dd64085c80584b9d472019414b512), [`977a4a2`](https://github.com/vercel/workflow/commit/977a4a29d9d900380fa8f6058e9dab6514b64de6), [`3bb5de1`](https://github.com/vercel/workflow/commit/3bb5de1669ae79e9536c93a5a46b7304a3c90ce4), [`20a6d73`](https://github.com/vercel/workflow/commit/20a6d73a0aa03b4b2f7318d97e12a5e7818c67d9), [`015452a`](https://github.com/vercel/workflow/commit/015452a70c52044635d24a134b7b984b6d2e1142), [`578f7e1`](https://github.com/vercel/workflow/commit/578f7e1f1b03d2a7eb39591aa457931b960755cb), [`db8a2c4`](https://github.com/vercel/workflow/commit/db8a2c49820530f7a331bb4c1f0a803e03547831), [`170ea96`](https://github.com/vercel/workflow/commit/170ea9659a2b9c26e611bab8bb5131f9c6cdc14d)]:
+  - @workflow/astro@4.0.11
+  - @workflow/core@4.6.0
+  - @workflow/next@4.0.12
+  - @workflow/cli@4.3.0
+  - @workflow/nitro@4.1.2
+  - @workflow/typescript-plugin@4.0.3
+  - @workflow/nest@4.0.12
+  - @workflow/rollup@4.0.11
+  - @workflow/sveltekit@4.0.11
+  - @workflow/errors@4.1.4
+  - @workflow/nuxt@4.0.12
+
 ## 4.5.0
 
 ### Minor Changes

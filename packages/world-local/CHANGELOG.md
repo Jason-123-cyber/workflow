@@ -1,5 +1,19 @@
 # @workflow/world-local
 
+## 4.2.1
+
+### Patch Changes
+
+- [#2534](https://github.com/vercel/workflow/pull/2534) [`ab24408`](https://github.com/vercel/workflow/commit/ab244082447eb60ad24faaad91ff4745af2481c5) Thanks [@NathanColosimo](https://github.com/NathanColosimo)! - Update `undici` to 7.28.0.
+
+- [#2295](https://github.com/vercel/workflow/pull/2295) [`f9119d4`](https://github.com/vercel/workflow/commit/f9119d4b6a39f93df8d97c338c62eb0b6bccad8d) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Fix `world-local` and `world-postgres` turning duplicate processing of the same `hook_created` (same `runId`, `hookId`, and token) into a self-conflict; both worlds now treat same-entity duplicates as idempotent (matching `step_created`), and recover crash-orphaned token claims (`world-local`) and hook rows (`world-postgres`) by completing the partial write instead of incorrectly suppressing it.
+
+- [#2508](https://github.com/vercel/workflow/pull/2508) [`b06fa65`](https://github.com/vercel/workflow/commit/b06fa657f5e216fd3281534de96619a1d502ef4c) Thanks [@karthikscale3](https://github.com/karthikscale3)! - Add run IDs on world storage telemetry spans.
+
+- Updated dependencies [[`f9119d4`](https://github.com/vercel/workflow/commit/f9119d4b6a39f93df8d97c338c62eb0b6bccad8d), [`db8a2c4`](https://github.com/vercel/workflow/commit/db8a2c49820530f7a331bb4c1f0a803e03547831)]:
+  - @workflow/world@4.2.1
+  - @workflow/errors@4.1.4
+
 ## 4.2.0
 
 ### Minor Changes

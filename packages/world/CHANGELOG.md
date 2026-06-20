@@ -1,5 +1,13 @@
 # @workflow/world
 
+## 4.2.1
+
+### Patch Changes
+
+- [#2295](https://github.com/vercel/workflow/pull/2295) [`f9119d4`](https://github.com/vercel/workflow/commit/f9119d4b6a39f93df8d97c338c62eb0b6bccad8d) Thanks [@TooTallNate](https://github.com/TooTallNate)! - Fix `world-local` and `world-postgres` turning duplicate processing of the same `hook_created` (same `runId`, `hookId`, and token) into a self-conflict; both worlds now treat same-entity duplicates as idempotent (matching `step_created`), and recover crash-orphaned token claims (`world-local`) and hook rows (`world-postgres`) by completing the partial write instead of incorrectly suppressing it.
+
+- [#2511](https://github.com/vercel/workflow/pull/2511) [`db8a2c4`](https://github.com/vercel/workflow/commit/db8a2c49820530f7a331bb4c1f0a803e03547831) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Emit `workflowName` on per-step events (`step_created`, `step_completed`) so Worlds can access it without additional queries
+
 ## 4.2.0
 
 ### Minor Changes
