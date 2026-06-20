@@ -1,5 +1,11 @@
 # @workflow/world-vercel
 
+## 5.0.0-beta.20
+
+### Patch Changes
+
+- [#2547](https://github.com/vercel/workflow/pull/2547) [`e3672e8`](https://github.com/vercel/workflow/commit/e3672e84f4996fbd35fc2542d11d401979d76924) Thanks [@smaeda-ks](https://github.com/smaeda-ks)! - Cancel the v4 event frame stream when a reader stops early, so the response body's undici connection returns to the pool instead of leaking.
+
 ## 5.0.0-beta.19
 
 ### Patch Changes

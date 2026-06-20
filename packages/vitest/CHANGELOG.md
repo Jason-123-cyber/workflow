@@ -1,5 +1,16 @@
 # @workflow/vitest
 
+## 5.0.0-beta.21
+
+### Patch Changes
+
+- [#2351](https://github.com/vercel/workflow/pull/2351) [`047ebd0`](https://github.com/vercel/workflow/commit/047ebd0368454ba1c4c9e25c0b57ce7a63bef5db) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Bundle project-local imports into the test step bundle instead of externalizing them, fixing module resolution errors when bundles are loaded by Node's native ESM loader
+
+- Updated dependencies [[`b713d84`](https://github.com/vercel/workflow/commit/b713d8417b1334abd1e30bdc50701d0d96dee39d)]:
+  - @workflow/builders@5.0.0-beta.21
+  - @workflow/core@5.0.0-beta.21
+  - @workflow/rollup@5.0.0-beta.21
+
 ## 5.0.0-beta.20
 
 ### Patch Changes

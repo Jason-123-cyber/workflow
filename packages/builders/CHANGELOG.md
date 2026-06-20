@@ -1,5 +1,14 @@
 # @workflow/builders
 
+## 5.0.0-beta.21
+
+### Patch Changes
+
+- [#2324](https://github.com/vercel/workflow/pull/2324) [`b713d84`](https://github.com/vercel/workflow/commit/b713d8417b1334abd1e30bdc50701d0d96dee39d) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Decode escaped workflowCode template literals before graph extraction so unicode-escape identifiers parse correctly.
+
+- Updated dependencies []:
+  - @workflow/core@5.0.0-beta.21
+
 ## 5.0.0-beta.20
 
 ### Minor Changes

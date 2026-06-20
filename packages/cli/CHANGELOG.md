@@ -1,5 +1,15 @@
 # @workflow/cli
 
+## 5.0.0-beta.21
+
+### Patch Changes
+
+- Updated dependencies [[`e3672e8`](https://github.com/vercel/workflow/commit/e3672e84f4996fbd35fc2542d11d401979d76924), [`b713d84`](https://github.com/vercel/workflow/commit/b713d8417b1334abd1e30bdc50701d0d96dee39d)]:
+  - @workflow/world-vercel@5.0.0-beta.20
+  - @workflow/builders@5.0.0-beta.21
+  - @workflow/core@5.0.0-beta.21
+  - @workflow/web@5.0.0-beta.21
+
 ## 5.0.0-beta.20
 
 ### Patch Changes

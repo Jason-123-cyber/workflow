@@ -1,5 +1,14 @@
 # @workflow/world-testing
 
+## 5.0.0-beta.21
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @workflow/cli@5.0.0-beta.21
+  - @workflow/core@5.0.0-beta.21
+  - workflow@5.0.0-beta.21
+
 ## 5.0.0-beta.20
 
 ### Patch Changes
