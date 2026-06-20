@@ -15,8 +15,11 @@ import {
   type WorkflowManifest,
 } from './apply-swc-transform.js';
 import { createWorkflowEntrypointOptionsCode } from './constants.js';
-import { createDiscoverEntriesPlugin } from './discover-entries-esbuild-plugin.js';
 import { getEsbuildTsconfigOptions } from './esbuild-tsconfig.js';
+import {
+  fastDiscoverEntries,
+  type DiscoveredEntries,
+} from './fast-discovery.js';
 import {
   getImportPath,
   resolveModuleSpecifier,
@@ -31,6 +34,8 @@ import { extractWorkflowGraphs } from './workflows-extractor.js';
 
 const enhancedResolve = promisify(enhancedResolveOriginal);
 const require = createRequire(import.meta.url);
+
+export type { DiscoveredEntries } from './fast-discovery.js';
 
 /**
  * Legacy opt-in for source maps on the final workflow wrapper + webhook
@@ -118,12 +123,6 @@ function moduleIdentityKey(file: string, moduleSpecifierRoot: string): string {
     return stripPackageVersion(moduleSpecifier);
   }
   return file.replace(/\\/g, '/');
-}
-
-export interface DiscoveredEntries {
-  discoveredSteps: Set<string>;
-  discoveredWorkflows: Set<string>;
-  discoveredSerdeFiles: Set<string>;
 }
 
 /**
@@ -288,6 +287,10 @@ export abstract class BaseBuilder {
   private discoveredEntries: WeakMap<string[], DiscoveredEntries> =
     new WeakMap();
 
+  public clearDiscoveredEntriesCache(): void {
+    this.discoveredEntries = new WeakMap();
+  }
+
   /**
    * Pseudo-packages that should not be checked for workflow patterns.
    */
@@ -414,17 +417,16 @@ export abstract class BaseBuilder {
 
     const discoverStart = Date.now();
 
-    // Resolve the SDK runtime entry point so that the discovery pass
-    // traces through it and discovers serde classes (like `Run`) that
-    // live inside SDK packages. Without this, files like `run.js` are
-    // only discovered when user code happens to import them.
+    // Resolve the SDK runtime serde entry point so that the discovery pass
+    // discovers classes like `Run` that live inside SDK packages. Without this,
+    // files like `run.js` are only discovered when user code imports them.
     // This is resolved here (rather than in callers) so that the original
     // `inputs` array reference is preserved for WeakMap caching — callers
     // like createWorkflowsBundle and createStepsBundle can share the same
     // cache entry when they pass the same inputFiles array.
     const resolvedWorkflowRuntime = await enhancedResolve(
       outdir,
-      'workflow/runtime'
+      '@workflow/core/runtime/run'
     ).catch(() => undefined);
     const entryPoints = resolvedWorkflowRuntime
       ? [...inputs, resolvedWorkflowRuntime]
@@ -432,28 +434,13 @@ export abstract class BaseBuilder {
 
     const effectiveTsconfigPath =
       tsconfigPath ?? (await this.findTsConfigPath());
-    const esbuildTsconfigOptions = await getEsbuildTsconfigOptions(
-      effectiveTsconfigPath
-    );
-    try {
-      await esbuild.build({
-        treeShaking: true,
-        entryPoints,
-        plugins: [
-          createDiscoverEntriesPlugin(state, this.transformProjectRoot),
-        ],
-        platform: 'node',
-        write: false,
-        outdir,
-        bundle: true,
-        sourcemap: false,
-        absWorkingDir: this.config.workingDir,
-        logLevel: 'silent',
-        ...esbuildTsconfigOptions,
-        // External packages that should not be bundled during discovery
-        external: this.config.externalPackages || [],
-      });
-    } catch (_) {}
+
+    await fastDiscoverEntries({
+      entryPoints,
+      state,
+      defaultTsconfigPath: effectiveTsconfigPath,
+      workingDir: this.config.workingDir,
+    });
 
     this.logBaseBuilderInfo(
       `Discovering workflow directives`,

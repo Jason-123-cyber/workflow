@@ -51,11 +51,19 @@ export interface WorkflowPatternMatch {
  * @returns Object with flags for each detected pattern
  */
 export function detectWorkflowPatterns(source: string): WorkflowPatternMatch {
-  const hasUseWorkflow = useWorkflowPattern.test(source);
-  const hasUseStep = useStepPattern.test(source);
-  const hasSerdeImport = workflowSerdeImportPattern.test(source);
-  const hasSerdeSymbol = workflowSerdeSymbolPattern.test(source);
+  const hasUseWorkflow =
+    source.includes('use workflow') && useWorkflowPattern.test(source);
+  const hasUseStep = source.includes('use step') && useStepPattern.test(source);
+  const hasSerdeImport =
+    source.includes('@workflow/serde') &&
+    workflowSerdeImportPattern.test(source);
+  const hasSerdeSymbol =
+    (source.includes('workflow-serialize') ||
+      source.includes('workflow-deserialize')) &&
+    workflowSerdeSymbolPattern.test(source);
   const hasSerdeComputedProperty =
+    (source.includes('WORKFLOW_SERIALIZE') ||
+      source.includes('WORKFLOW_DESERIALIZE')) &&
     workflowSerdeComputedPropertyPattern.test(source);
 
   return {
